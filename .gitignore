@@ -1,0 +1,51 @@
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+.venv/
+venv/
+.uv/
+
+# ── Environment secrets ────────────────────────
+.env
+.env.local
+.env.production
+!.env.example
+
+# ── mypy ──────────────────────────────────────
+.mypy_cache/
+.dmypy.json
+
+# ── pytest / coverage ─────────────────────────
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# ── ruff ──────────────────────────────────────
+.ruff_cache/
+
+# ── IDEs ──────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── OS ────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Node (frontend) ───────────────────────────
+frontend/node_modules/
+frontend/.next/
+frontend/.pnpm-store/
+
+# ── Docker ────────────────────────────────────
+*.log

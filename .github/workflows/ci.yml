@@ -1,0 +1,128 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  PYTHON_VERSION: "3.14"
+
+jobs:
+  lint:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Ruff lint
+        run: uv run ruff check .
+
+      - name: Ruff format check
+        run: uv run ruff format --check .
+
+      - name: mypy type check
+        run: uv run mypy src/
+
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Run unit tests
+        run: uv run pytest tests/unit/ -v --cov=src --cov-report=xml
+        env:
+          APP_ENV: development
+          DATABASE_URL: postgresql+asyncpg://test:test@localhost/test
+          REDIS_URL: redis://localhost:6379/0
+          SECRET_KEY: test-secret-key-for-ci-only-not-real
+          API_AUTH_MODE: jwt
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: task_engine_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Run integration tests
+        run: uv run pytest tests/integration/ -v
+        env:
+          APP_ENV: development
+          DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/task_engine_test
+          DATABASE_URL_SYNC: postgresql://test:test@localhost:5432/task_engine_test
+          REDIS_URL: redis://localhost:6379/0
+          SECRET_KEY: test-secret-key-for-ci-only-not-real
+          API_AUTH_MODE: jwt
+          TASK_MAX_PAYLOAD_BYTES: "65536"
+          DEFAULT_MAX_ATTEMPTS: "3"
+          DEFAULT_TIMEOUT_SECONDS: "300"
+          LEASE_SECONDS: "300"
+          HEARTBEAT_INTERVAL_SECONDS: "30"
+          WORKER_CONCURRENCY: "2"
+          SCHEDULER_TICK_SECONDS: "5"
+          RESULT_RETENTION_DAYS: "30"
+          TASK_EVENT_RETENTION_DAYS: "90"
+          DLQ_RETENTION_DAYS: "180"
+          METRICS_ENABLED: "false"
+          LOG_LEVEL: "WARNING"
