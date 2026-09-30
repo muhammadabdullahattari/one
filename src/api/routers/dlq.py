@@ -2,8 +2,10 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.dependencies import get_dlq_repository, get_dlq_service, require_role
+from src.api.dependencies import get_db_session, get_dlq_repository, get_dlq_service, require_role
 from src.api.schemas.dlq import (
     DLQBulkReplayRequest,
     DLQEntryResponse,
@@ -11,27 +13,46 @@ from src.api.schemas.dlq import (
     DLQReplayRequest,
 )
 from src.application.dlq_service import DLQService
+from src.persistence.models.task import TaskModel
 from src.persistence.repositories.dlq_repository import DLQRepository
 from src.security.principal import Principal
 
 router = APIRouter(prefix="/dlq", tags=["DLQ"])
 
 
+async def _task_queue(session: AsyncSession, task_id: UUID) -> str:
+    res = await session.execute(
+        select(TaskModel.queue).where(TaskModel.task_id == task_id)
+    )
+    return res.scalar_one_or_none() or "default"
+
+
+async def _task_queues(session: AsyncSession, task_ids: list[UUID]) -> dict[UUID, str]:
+    if not task_ids:
+        return {}
+    res = await session.execute(
+        select(TaskModel.task_id, TaskModel.queue).where(TaskModel.task_id.in_(task_ids))
+    )
+    return {row.task_id: row.queue for row in res.all()}
+
+
 @router.get("", response_model=DLQListResponse, summary="List dead-lettered tasks in DLQ")
 async def list_dlq(
     dlq_repo: Annotated[DLQRepository, Depends(get_dlq_repository)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
     limit: int = Query(50, ge=1, le=1000, description="Page limit"),
     offset: int = Query(0, ge=0, description="Page offset"),
 ) -> DLQListResponse:
     entries = await dlq_repo.list_entries(limit=limit, offset=offset)
     total = await dlq_repo.count_entries()
+    queue_map = await _task_queues(session, [e.task_id for e in entries])
     return DLQListResponse(
         items=[
             DLQEntryResponse(
                 dlq_id=e.dlq_id,
                 task_id=e.task_id,
                 final_attempt_id=e.final_attempt_id,
-                queue="default",
+                queue=queue_map.get(e.task_id, "default"),
                 reason=e.reason,
                 error_class=e.error_class,
                 payload_ref=e.payload_ref,
@@ -54,18 +75,21 @@ async def list_dlq(
     summary="Get details of a specific dead letter entry",
 )
 async def get_dlq_entry(
-    dlq_id: UUID, dlq_repo: Annotated[DLQRepository, Depends(get_dlq_repository)]
+    dlq_id: UUID,
+    dlq_repo: Annotated[DLQRepository, Depends(get_dlq_repository)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> DLQEntryResponse:
     entry = await dlq_repo.get_by_id(dlq_id)
     if not entry:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"DLQ entry '{dlq_id}' not found."
         )
+    queue = await _task_queue(session, entry.task_id)
     return DLQEntryResponse(
         dlq_id=entry.dlq_id,
         task_id=entry.task_id,
         final_attempt_id=entry.final_attempt_id,
-        queue="default",
+        queue=queue,
         reason=entry.reason,
         error_class=entry.error_class,
         payload_ref=entry.payload_ref,

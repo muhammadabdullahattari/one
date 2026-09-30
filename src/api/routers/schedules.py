@@ -31,7 +31,7 @@ def _to_response(s: Schedule) -> ScheduledJobResponse:
         timezone=s.timezone,
         misfire_policy=s.misfire_policy,
         enabled=s.enabled,
-        payload={},
+        payload=s.payload or {},
         next_run_at=s.next_run_at,
         last_run_at=s.last_run_at,
         total_run_count=s.version,
@@ -84,6 +84,7 @@ async def create_schedule(
         schedule_id=uuid4(),
         task_type=request.task_type,
         queue=request.queue,
+        payload=request.payload or None,
         cron_expression=request.cron,
         interval_seconds=request.interval_seconds,
         timezone=request.timezone,
@@ -201,7 +202,7 @@ async def trigger_schedule(
         )
     task = await task_service.submit_task(
         task_type=schedule.task_type,
-        payload={},
+        payload=schedule.payload,
         queue=schedule.queue,
         metadata={"triggered_by_schedule": str(schedule_id), "manual_trigger": True},
     )

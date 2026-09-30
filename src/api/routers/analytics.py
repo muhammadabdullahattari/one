@@ -28,6 +28,7 @@ from src.broker.registry import BrokerRegistry
 from src.core.constants import TaskStatus
 from src.observability.metrics import generate_metrics_text, get_metrics_content_type
 from src.persistence.models.task import TaskModel
+from src.persistence.models.task_attempt import TaskAttemptModel
 from src.persistence.repositories.queue_repository import QueueRepository
 from src.persistence.repositories.worker_repository import WorkerRepository
 from src.persistence.session import get_db_session
@@ -108,12 +109,58 @@ async def get_latency(
     session: Annotated[AsyncSession, Depends(get_db_session)],
     queue: str | None = Query(None, description="Optional queue filter"),
 ) -> LatencyResponse:
+    exec_ms = (
+        func.extract("epoch", TaskAttemptModel.finished_at - TaskAttemptModel.started_at) * 1000.0
+    )
+    wait_ms = (
+        func.extract("epoch", TaskAttemptModel.started_at - TaskModel.created_at) * 1000.0
+    )
+
+    exec_stmt = (
+        select(
+            func.percentile_cont(0.50).within_group(exec_ms).label("p50"),
+            func.percentile_cont(0.95).within_group(exec_ms).label("p95"),
+            func.percentile_cont(0.99).within_group(exec_ms).label("p99"),
+            func.avg(exec_ms).label("avg"),
+        )
+        .select_from(TaskAttemptModel)
+        .join(TaskModel, TaskAttemptModel.task_id == TaskModel.task_id)
+        .where(TaskAttemptModel.finished_at.isnot(None))
+    )
+    wait_stmt = (
+        select(
+            func.percentile_cont(0.50).within_group(wait_ms).label("p50"),
+            func.percentile_cont(0.95).within_group(wait_ms).label("p95"),
+            func.percentile_cont(0.99).within_group(wait_ms).label("p99"),
+            func.avg(wait_ms).label("avg"),
+        )
+        .select_from(TaskAttemptModel)
+        .join(TaskModel, TaskAttemptModel.task_id == TaskModel.task_id)
+        .where(TaskAttemptModel.started_at.isnot(None))
+    )
+    if queue:
+        exec_stmt = exec_stmt.where(TaskModel.queue == queue)
+        wait_stmt = wait_stmt.where(TaskModel.queue == queue)
+
+    exec_row = (await session.execute(exec_stmt)).one()
+    wait_row = (await session.execute(wait_stmt)).one()
+
+    def _ms(row: object, field: str) -> float:
+        val = getattr(row, field, None)
+        return round(float(val), 3) if val is not None else 0.0
+
+    ep50, ep95, ep99, eavg = _ms(exec_row, "p50"), _ms(exec_row, "p95"), _ms(exec_row, "p99"), _ms(exec_row, "avg")
+    wp50, wp95, wp99, wavg = _ms(wait_row, "p50"), _ms(wait_row, "p95"), _ms(wait_row, "p99"), _ms(wait_row, "avg")
+
     return LatencyResponse(
-        queue_wait=LatencyPercentiles(p50_ms=4.2, p95_ms=18.5, p99_ms=45.0, avg_ms=7.8),
-        execution_duration=LatencyPercentiles(
-            p50_ms=120.0, p95_ms=450.0, p99_ms=1200.0, avg_ms=185.0
+        queue_wait=LatencyPercentiles(p50_ms=wp50, p95_ms=wp95, p99_ms=wp99, avg_ms=wavg),
+        execution_duration=LatencyPercentiles(p50_ms=ep50, p95_ms=ep95, p99_ms=ep99, avg_ms=eavg),
+        e2e_duration=LatencyPercentiles(
+            p50_ms=round(wp50 + ep50, 3),
+            p95_ms=round(wp95 + ep95, 3),
+            p99_ms=round(wp99 + ep99, 3),
+            avg_ms=round(wavg + eavg, 3),
         ),
-        e2e_duration=LatencyPercentiles(p50_ms=125.0, p95_ms=470.0, p99_ms=1250.0, avg_ms=193.0),
     )
 
 
@@ -153,6 +200,21 @@ async def get_worker_utilization(
 async def get_task_type_stats(
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> TaskTypeStatsResponse:
+    durations_res = await session.execute(
+        select(
+            TaskModel.task_type,
+            func.avg(
+                func.extract("epoch", TaskAttemptModel.finished_at - TaskAttemptModel.started_at)
+                * 1000.0
+            ),
+        )
+        .select_from(TaskAttemptModel)
+        .join(TaskModel, TaskAttemptModel.task_id == TaskModel.task_id)
+        .where(TaskAttemptModel.finished_at.isnot(None))
+        .group_by(TaskModel.task_type)
+    )
+    avg_map = {str(row[0]): float(row[1]) for row in durations_res.all() if row[1] is not None}
+
     stmt = select(
         TaskModel.task_type,
         func.count(TaskModel.task_id).label("total"),
@@ -174,7 +236,7 @@ async def get_task_type_stats(
             success_rate=round(int(r.success or 0) / int(r.total) * 100.0, 2)
             if int(r.total) > 0
             else 0.0,
-            avg_duration_ms=150.0,
+            avg_duration_ms=round(avg_map.get(str(r.task_type), 0.0), 3),
         )
         for r in rows
     ]

@@ -72,6 +72,7 @@ class SchedulerDaemon:
                     task = Task(
                         task_type=sched.task_type,
                         queue=sched.queue,
+                        payload=sched.payload,
                         payload_ref=sched.payload_ref,
                         schedule_id=sched.schedule_id,
                         scheduled_at=run_timestamp,

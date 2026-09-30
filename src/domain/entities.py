@@ -160,6 +160,7 @@ class Schedule(DomainEntity):
     schedule_id: UUID = Field(default_factory=uuid4)
     task_type: str
     queue: str = Field(default=DEFAULT_QUEUE_NAME)
+    payload: dict[str, Any] | None = Field(default=None)
     payload_ref: str | None = Field(default=None)
     cron_expression: str | None = Field(default=None)
     interval_seconds: int | None = Field(default=None)

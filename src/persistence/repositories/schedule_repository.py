@@ -16,6 +16,7 @@ class ScheduleRepository(BaseRepository[ScheduleModel]):
             schedule_id=schedule.schedule_id,
             task_type=schedule.task_type,
             queue=schedule.queue,
+            payload=schedule.payload,
             payload_ref=schedule.payload_ref,
             cron_expression=schedule.cron_expression,
             interval_seconds=schedule.interval_seconds,
@@ -90,6 +91,7 @@ class ScheduleRepository(BaseRepository[ScheduleModel]):
             .values(
                 task_type=schedule.task_type,
                 queue=schedule.queue,
+                payload=schedule.payload,
                 payload_ref=schedule.payload_ref,
                 cron_expression=schedule.cron_expression,
                 interval_seconds=schedule.interval_seconds,
@@ -117,6 +119,7 @@ class ScheduleRepository(BaseRepository[ScheduleModel]):
             schedule_id=m.schedule_id,
             task_type=m.task_type,
             queue=m.queue,
+            payload=m.payload,
             payload_ref=m.payload_ref,
             cron_expression=m.cron_expression,
             interval_seconds=m.interval_seconds,
