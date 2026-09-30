@@ -1,12 +1,15 @@
+import hashlib
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
 from src.api.dependencies import (
     get_current_principal,
     get_project_repository,
     get_user_repository,
+    get_user_session_repository,
 )
 from src.api.schemas.auth import (
     KeyRotationRequest,
@@ -19,8 +22,10 @@ from src.api.schemas.auth import (
     UserResponse,
 )
 from src.core.config import Settings, get_settings
+from src.core.cookie_utils import CookieManager
 from src.persistence.repositories.project_repository import ProjectRepository
 from src.persistence.repositories.user_repository import UserRepository
+from src.persistence.repositories.user_session_repository import UserSessionRepository
 from src.security.api_keys import generate_api_key
 from src.security.jwt import (
     create_access_token,
@@ -77,15 +82,18 @@ async def register_user(
     summary="Authenticate with credentials and obtain access + refresh tokens",
 )
 async def login(
-    request: LoginRequest,
+    request_data: LoginRequest,
+    request: Request,
+    response: Response,
     user_repo: Annotated[UserRepository, Depends(get_user_repository)],
+    session_repo: Annotated[UserSessionRepository, Depends(get_user_session_repository)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> TokenResponse:
     await user_repo.seed_default_users()
-    user = await user_repo.get_by_username(request.username)
+    user = await user_repo.get_by_username(request_data.username)
     if not user:
-        user = await user_repo.get_by_email(request.username)
-    if not user or not verify_password(request.password, user.password_hash):
+        user = await user_repo.get_by_email(request_data.username)
+    if not user or not verify_password(request_data.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password.",
@@ -99,6 +107,24 @@ async def login(
         subject=str(user.user_id),
         claims={"role": user.role, "username": user.username},
     )
+
+    refresh_token_hash = hashlib.sha256(refresh_tok.encode()).hexdigest()
+    expires_at = datetime.now(UTC) + timedelta(days=settings.refresh_token_expire_days)
+    ip_address = request.client.host if request.client else None
+    user_agent = request.headers.get("user-agent")
+
+    session = await session_repo.create_session(
+        user_id=user.user_id,
+        refresh_token_hash=refresh_token_hash,
+        expires_at=expires_at,
+        user_agent=user_agent,
+        ip_address=ip_address,
+    )
+
+    CookieManager.set_access_token_cookie(response, access_tok, settings)
+    CookieManager.set_refresh_token_cookie(response, refresh_tok, settings)
+    CookieManager.set_session_id_cookie(response, str(session.session_id), settings)
+
     expires_seconds = settings.access_token_expire_minutes * 60
     return TokenResponse(
         access_token=access_tok,
@@ -116,29 +142,58 @@ async def login(
     summary="Exchange valid refresh token for a new access token",
 )
 async def refresh_token(
-    request: RefreshTokenRequest,
+    request: Request,
+    response: Response,
+    request_data: RefreshTokenRequest | None,
+    session_repo: Annotated[UserSessionRepository, Depends(get_user_session_repository)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> TokenResponse:
+    tok: str | None = None
+    if request_data and request_data.refresh_token:
+        tok = request_data.refresh_token
+    else:
+        tok = CookieManager.get_refresh_token_from_cookies(request)
+
+    if not tok:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing refresh token in request body or cookie.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     try:
-        payload = decode_refresh_token(request.refresh_token)
+        payload = decode_refresh_token(tok)
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Invalid or expired refresh token: {exc}",
             headers={"WWW-Authenticate": "Bearer"},
         ) from exc
+
+    tok_hash = hashlib.sha256(tok.encode()).hexdigest()
+    active_session = await session_repo.get_active_session_by_token_hash(tok_hash)
+    if not active_session:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token has been revoked or expired.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     user_id = payload.get("sub", "unknown")
     role = payload.get("role", "viewer")
     new_access_tok = create_access_token(
         subject=user_id,
         claims={"role": role},
     )
+
+    CookieManager.set_access_token_cookie(response, new_access_tok, settings)
+
     expires_seconds = settings.access_token_expire_minutes * 60
     return TokenResponse(
         access_token=new_access_tok,
         token_type="bearer",
         expires_in=expires_seconds,
-        refresh_token=request.refresh_token,
+        refresh_token=tok,
         user_id=user_id,
         role=role,
     )
@@ -198,8 +253,40 @@ async def rotate_api_key(
     status_code=status.HTTP_200_OK,
     summary="Revoke active authentication session",
 )
-async def logout() -> dict[str, str]:
+async def logout(
+    request: Request,
+    response: Response,
+    session_repo: Annotated[UserSessionRepository, Depends(get_user_session_repository)],
+) -> dict[str, str]:
+    tok = CookieManager.get_refresh_token_from_cookies(request)
+    if tok:
+        tok_hash = hashlib.sha256(tok.encode()).hexdigest()
+        active_session = await session_repo.get_active_session_by_token_hash(tok_hash)
+        if active_session:
+            await session_repo.revoke_session(active_session.session_id)
+
+    CookieManager.clear_auth_cookies(response)
     return {"message": "Successfully logged out."}
+
+
+@router.post(
+    "/logout-all-devices",
+    status_code=status.HTTP_200_OK,
+    summary="Revoke all active authentication sessions across all devices",
+)
+async def logout_all_devices(
+    response: Response,
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    session_repo: Annotated[UserSessionRepository, Depends(get_user_session_repository)],
+) -> dict[str, str]:
+    try:
+        user_uuid = UUID(principal.principal_id)
+        await session_repo.revoke_user_sessions(user_uuid)
+    except ValueError:
+        pass
+
+    CookieManager.clear_auth_cookies(response)
+    return {"message": "Successfully logged out from all devices."}
 
 
 @router.get(

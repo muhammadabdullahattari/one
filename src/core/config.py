@@ -102,6 +102,9 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = Field(
         default=30, ge=1, description="JWT Access token expiration duration in minutes."
     )
+    refresh_token_expire_days: int = Field(
+        default=7, ge=1, le=90, description="JWT Refresh token expiration duration in days."
+    )
     api_key_salt: str = Field(
         default="task-engine-api-key-salt",
         description="Salt used when hashing external API keys before storing.",

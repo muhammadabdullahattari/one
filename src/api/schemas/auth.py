@@ -59,10 +59,9 @@ class LoginRequest(BaseModel):
 
 
 class RefreshTokenRequest(BaseModel):
-    refresh_token: str = Field(
-        ...,
-        min_length=10,
-        description="Valid signed JWT refresh token.",
+    refresh_token: str | None = Field(
+        default=None,
+        description="Valid signed JWT refresh token (optional if provided via HttpOnly cookie).",
         examples=["eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."],
     )
 

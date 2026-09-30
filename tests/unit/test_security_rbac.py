@@ -133,3 +133,68 @@ async def test_api_key_rotation_and_cross_tenant_denial() -> None:
         )
         assert cross_res.status_code == 403
     app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_cookie_auth_and_silent_refresh_flow() -> None:
+    app = create_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        login_res = await client.post(
+            "/api/v1/auth/login",
+            json={"username": "admin", "password": "adminpassword123"},
+        )
+        assert login_res.status_code == 200
+        assert "te_access_token" in login_res.cookies
+        assert "te_refresh_token" in login_res.cookies
+        assert "te_session_id" in login_res.cookies
+
+        me_res = await client.get("/api/v1/auth/me")
+        assert me_res.status_code == 200
+        assert me_res.json()["role"] == "admin"
+
+        refresh_res = await client.post("/api/v1/auth/refresh", json={})
+        assert refresh_res.status_code == 200
+        assert "access_token" in refresh_res.json()
+
+        logout_res = await client.post("/api/v1/auth/logout")
+        assert logout_res.status_code == 200
+
+        after_logout_refresh = await client.post(
+            "/api/v1/auth/refresh",
+            json={"refresh_token": login_res.json()["refresh_token"]},
+        )
+        assert after_logout_refresh.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_logout_all_devices_flow() -> None:
+    app = create_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        login1 = await client.post(
+            "/api/v1/auth/login",
+            json={"username": "admin", "password": "adminpassword123"},
+        )
+        assert login1.status_code == 200
+        tok1 = login1.json()["refresh_token"]
+
+        login2 = await client.post(
+            "/api/v1/auth/login",
+            json={"username": "admin", "password": "adminpassword123"},
+        )
+        assert login2.status_code == 200
+        tok2 = login2.json()["refresh_token"]
+        access_tok2 = login2.json()["access_token"]
+
+        logout_all = await client.post(
+            "/api/v1/auth/logout-all-devices",
+            headers={"Authorization": f"Bearer {access_tok2}"},
+        )
+        assert logout_all.status_code == 200
+
+        ref1 = await client.post("/api/v1/auth/refresh", json={"refresh_token": tok1})
+        assert ref1.status_code == 401
+
+        ref2 = await client.post("/api/v1/auth/refresh", json={"refresh_token": tok2})
+        assert ref2.status_code == 401
