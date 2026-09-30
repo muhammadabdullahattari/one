@@ -50,6 +50,7 @@ class TaskLifecycleService:
         max_attempts: int | None = None,
         delay_seconds: int | None = None,
         metadata: dict[str, Any] | None = None,
+        schedule_id: UUID | None = None,
     ) -> Task:
         tenant = tenant_id or "default"
         task_def = global_task_registry.get(task_type)
@@ -115,6 +116,7 @@ class TaskLifecycleService:
             priority=priority,
             payload=inline_payload,
             payload_ref=payload_ref,
+            schedule_id=schedule_id,
             idempotency_key=idempotency_key,
             timeout_seconds=timeout_sec,
             max_attempts=max_att,

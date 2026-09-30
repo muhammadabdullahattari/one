@@ -204,6 +204,7 @@ async def trigger_schedule(
         task_type=schedule.task_type,
         payload=schedule.payload,
         queue=schedule.queue,
+        schedule_id=schedule.schedule_id,
         metadata={"triggered_by_schedule": str(schedule_id), "manual_trigger": True},
     )
     return TaskResponse.model_validate(task)
