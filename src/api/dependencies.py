@@ -14,12 +14,15 @@ from src.core.constants import ApiAuthMode, HttpHeader
 from src.persistence.repositories.dlq_repository import DLQRepository
 from src.persistence.repositories.idempotency_repository import IdempotencyRepository
 from src.persistence.repositories.outbox_repository import OutboxRepository
+from src.persistence.repositories.project_repository import ProjectRepository
 from src.persistence.repositories.queue_repository import QueueRepository
 from src.persistence.repositories.schedule_repository import ScheduleRepository
 from src.persistence.repositories.task_repository import TaskRepository
+from src.persistence.repositories.user_repository import UserRepository
 from src.persistence.repositories.worker_repository import WorkerRepository
 from src.persistence.session import get_db_session
 from src.rate_limit.limiter import RedisTokenBucketRateLimiter
+from src.security.api_keys import hash_api_key
 from src.security.jwt import decode_access_token
 from src.security.principal import Principal
 
@@ -46,6 +49,18 @@ async def get_redis_client() -> Redis | None:
         except Exception:
             _redis_client = None
     return _redis_client
+
+
+async def get_user_repository(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> UserRepository:
+    return UserRepository(session)
+
+
+async def get_project_repository(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> ProjectRepository:
+    return ProjectRepository(session)
 
 
 async def get_task_repository(
@@ -115,6 +130,7 @@ async def get_dlq_service(session: Annotated[AsyncSession, Depends(get_db_sessio
 
 async def get_current_principal(
     bearer_creds: Annotated[HTTPAuthorizationCredentials | None, Security(http_bearer)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
     api_key_header: Annotated[str | None, Header(alias=HttpHeader.API_KEY.value)] = None,
     settings: Annotated[Settings | None, Depends(get_settings)] = None,
 ) -> Principal:
@@ -144,6 +160,18 @@ async def get_current_principal(
                 headers={"WWW-Authenticate": "Bearer"},
             ) from exc
     if auth_mode in (ApiAuthMode.API_KEY, ApiAuthMode.BOTH) and api_key_header:
+        key_hash = hash_api_key(api_key_header)
+        project_repo = ProjectRepository(session)
+        key_record = await project_repo.get_api_key_by_hash(key_hash)
+        if key_record:
+            return Principal(
+                principal_id=str(key_record.principal_id),
+                role=key_record.role,
+                tenant_id=str(key_record.project_id) if key_record.project_id else None,
+                scopes=list(key_record.scopes) if key_record.scopes else ["*"],
+                auth_mode=ApiAuthMode.API_KEY,
+                is_authenticated=True,
+            )
         return Principal(
             principal_id=f"apikey-{api_key_header[:8]}",
             role="operator",

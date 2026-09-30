@@ -70,7 +70,7 @@ async def test_auth_login_and_me_lifecycle(client: AsyncClient) -> None:
     assert me_res.status_code == 200
     me_data = me_res.json()
     assert me_data["role"] == "admin"
-    assert me_data["principal_id"] == "usr-admin-001"
+    assert me_data["principal_id"] == token_data["user_id"]
 
 
 async def test_auth_invalid_credentials(client: AsyncClient) -> None:

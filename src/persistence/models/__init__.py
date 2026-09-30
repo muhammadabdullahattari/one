@@ -6,7 +6,7 @@ from src.persistence.models.idempotency import IdempotencyKeyModel
 from src.persistence.models.outbox import TaskOutboxModel
 from src.persistence.models.queue import QueueModel
 from src.persistence.models.schedule import ScheduleModel
-from src.persistence.models.security import ApiCredentialModel
+from src.persistence.models.security import ApiCredentialModel, ProjectModel, UserModel
 from src.persistence.models.task import TaskModel
 from src.persistence.models.task_attempt import TaskAttemptModel
 from src.persistence.models.task_event import TaskEventModel
@@ -19,6 +19,7 @@ __all__ = [
     "BrokerBackendModel",
     "DLQEntryModel",
     "IdempotencyKeyModel",
+    "ProjectModel",
     "QueueModel",
     "ScheduleModel",
     "TaskAttemptModel",
@@ -27,5 +28,6 @@ __all__ = [
     "TaskOutboxModel",
     "TimestampMixin",
     "UUIDPrimaryKeyMixin",
+    "UserModel",
     "WorkerModel",
 ]

@@ -1,10 +1,13 @@
-from datetime import UTC, datetime
 from typing import Annotated
-from uuid import uuid4
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from src.api.dependencies import get_current_principal
+from src.api.dependencies import (
+    get_current_principal,
+    get_project_repository,
+    get_user_repository,
+)
 from src.api.schemas.auth import (
     KeyRotationRequest,
     KeyRotationResponse,
@@ -16,6 +19,8 @@ from src.api.schemas.auth import (
     UserResponse,
 )
 from src.core.config import Settings, get_settings
+from src.persistence.repositories.project_repository import ProjectRepository
+from src.persistence.repositories.user_repository import UserRepository
 from src.security.api_keys import generate_api_key
 from src.security.jwt import (
     create_access_token,
@@ -28,27 +33,6 @@ from src.security.rbac import enforce_project_access, require_role
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
-_USERS_DB: dict[str, dict[str, str]] = {
-    "admin": {
-        "user_id": "usr-admin-001",
-        "username": "admin",
-        "email": "admin@taskengine.internal",
-        "password_hash": hash_password("adminpassword123"),
-        "role": "admin",
-        "created_at": datetime.now(UTC).isoformat(),
-    },
-    "operator": {
-        "user_id": "usr-op-002",
-        "username": "operator",
-        "email": "operator@taskengine.internal",
-        "password_hash": hash_password("operatorpass123"),
-        "role": "operator",
-        "created_at": datetime.now(UTC).isoformat(),
-    },
-}
-
-_ACTIVE_API_KEYS: dict[str, dict[str, str]] = {}
-
 
 @router.post(
     "/register",
@@ -56,28 +40,34 @@ _ACTIVE_API_KEYS: dict[str, dict[str, str]] = {}
     status_code=status.HTTP_201_CREATED,
     summary="Register a new operator or viewer account",
 )
-async def register_user(request: UserCreateRequest) -> UserResponse:
-    if request.username in _USERS_DB:
+async def register_user(
+    request: UserCreateRequest,
+    user_repo: Annotated[UserRepository, Depends(get_user_repository)],
+) -> UserResponse:
+    existing_user = await user_repo.get_by_username(request.username)
+    if existing_user:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Username '{request.username}' already exists.",
         )
-    user_id = f"usr-{request.username}"
-    now = datetime.now(UTC)
-    _USERS_DB[request.username] = {
-        "user_id": user_id,
-        "username": request.username,
-        "email": request.email,
-        "password_hash": hash_password(request.password),
-        "role": request.role,
-        "created_at": now.isoformat(),
-    }
-    return UserResponse(
-        user_id=user_id,
+    existing_email = await user_repo.get_by_email(request.email)
+    if existing_email:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Email '{request.email}' is already registered.",
+        )
+    user = await user_repo.create_user(
         username=request.username,
         email=request.email,
+        password_hash=hash_password(request.password),
         role=request.role,
-        created_at=now,
+    )
+    return UserResponse(
+        user_id=str(user.user_id),
+        username=user.username,
+        email=user.email,
+        role=user.role,
+        created_at=user.created_at,
     )
 
 
@@ -87,22 +77,27 @@ async def register_user(request: UserCreateRequest) -> UserResponse:
     summary="Authenticate with credentials and obtain access + refresh tokens",
 )
 async def login(
-    request: LoginRequest, settings: Annotated[Settings, Depends(get_settings)]
+    request: LoginRequest,
+    user_repo: Annotated[UserRepository, Depends(get_user_repository)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> TokenResponse:
-    user = _USERS_DB.get(request.username)
-    if not user or not verify_password(request.password, user["password_hash"]):
+    await user_repo.seed_default_users()
+    user = await user_repo.get_by_username(request.username)
+    if not user:
+        user = await user_repo.get_by_email(request.username)
+    if not user or not verify_password(request.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password.",
             headers={"WWW-Authenticate": "Bearer"},
         )
     access_tok = create_access_token(
-        subject=user["user_id"],
-        claims={"role": user["role"], "username": user["username"]},
+        subject=str(user.user_id),
+        claims={"role": user.role, "username": user.username},
     )
     refresh_tok = create_refresh_token(
-        subject=user["user_id"],
-        claims={"role": user["role"], "username": user["username"]},
+        subject=str(user.user_id),
+        claims={"role": user.role, "username": user.username},
     )
     expires_seconds = settings.access_token_expire_minutes * 60
     return TokenResponse(
@@ -110,8 +105,8 @@ async def login(
         token_type="bearer",
         expires_in=expires_seconds,
         refresh_token=refresh_tok,
-        user_id=user["user_id"],
-        role=user["role"],
+        user_id=str(user.user_id),
+        role=user.role,
     )
 
 
@@ -156,24 +151,43 @@ async def refresh_token(
 )
 async def rotate_api_key(
     request: KeyRotationRequest,
+    project_repo: Annotated[ProjectRepository, Depends(get_project_repository)],
     principal: Annotated[Principal, Depends(get_current_principal)],
 ) -> KeyRotationResponse:
     require_role("admin", "operator")(principal)
     enforce_project_access(principal, request.project_id)
 
-    raw_new_key, _key_prefix, key_hash = generate_api_key(prefix="tk_live_")
-    new_key_id = f"key-{uuid4().hex[:8]}"
-    _ACTIVE_API_KEYS[new_key_id] = {
-        "project_id": request.project_id,
-        "key_hash": key_hash,
-        "status": "active",
-    }
-    if request.old_key_id in _ACTIVE_API_KEYS:
-        _ACTIVE_API_KEYS[request.old_key_id]["status"] = "revoked"
+    project = None
+    try:
+        project_uuid = UUID(request.project_id)
+        project = await project_repo.get_by_id(project_uuid)
+    except ValueError:
+        project = await project_repo.get_by_slug(request.project_id)
+
+    if not project:
+        project = await project_repo.create_project(
+            name=f"Project {request.project_id}",
+            slug=request.project_id,
+        )
+
+    raw_new_key, key_prefix, key_hash = generate_api_key(prefix="te_live_")
+    new_key = await project_repo.create_api_key(
+        project_id=project.project_id,
+        name="Rotated API Key",
+        key_prefix=key_prefix,
+        key_hash=key_hash,
+        role=principal.role,
+        scopes=principal.scopes or ["*"],
+    )
+    try:
+        old_uuid = UUID(request.old_key_id)
+        await project_repo.revoke_api_key(project.project_id, old_uuid)
+    except ValueError:
+        pass
 
     return KeyRotationResponse(
         project_id=request.project_id,
-        new_key_id=new_key_id,
+        new_key_id=str(new_key.principal_id),
         new_api_key=raw_new_key,
         revoked_key_id=request.old_key_id,
     )

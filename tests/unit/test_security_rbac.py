@@ -92,7 +92,7 @@ async def test_auth_login_and_refresh_flow() -> None:
         assert ref_res.status_code == 200
         new_data = ref_res.json()
         assert "access_token" in new_data
-        assert new_data["user_id"] == "usr-admin-001"
+        assert new_data["user_id"] == data["user_id"]
 
 
 @pytest.mark.asyncio
@@ -116,7 +116,7 @@ async def test_api_key_rotation_and_cross_tenant_denial() -> None:
         assert rot_res.status_code == 200
         data = rot_res.json()
         assert data["project_id"] == "proj-100"
-        assert data["new_api_key"].startswith("tk_live_")
+        assert data["new_api_key"].startswith("te_live_")
         assert data["revoked_key_id"] == "key-old-1"
 
         tenant_principal = Principal(

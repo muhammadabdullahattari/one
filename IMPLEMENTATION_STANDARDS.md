@@ -6,6 +6,7 @@
 * Prefer simple, maintainable solutions and reuse existing project patterns and utilities.
 * Keep changes focused on the requested task; do not add dependencies or unrelated refactors without a clear need.
 * Consider validation, error handling, performance, backward compatibility, and dependent functionality.
+* No mock, dummy, static, hardcoded, or fake implementations. Every feature and endpoint must perform its actual intended functionality using the real services, database, authentication/session state, external APIs, or other required integrations. No placeholder success responses should be used where real business logic is required.
 
 ### Regression Safety and Testing
 
@@ -30,6 +31,7 @@ Before considering work complete, verify:
 * [ ] Relevant existing functionality was checked for regressions.
 * [ ] No unrelated changes or exposed secrets were introduced.
 * [ ] Nothing was pushed to the remote repository unless explicitly requested.
+* [ ] All implemented features are fully functional and production-ready; no mock, dummy, static, hardcoded, fake, or placeholder implementations remain.
 
 When reporting completion, briefly state what changed, tests and results, and any remaining concerns or limitations.
 
