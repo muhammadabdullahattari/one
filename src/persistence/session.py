@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
+from sqlalchemy.pool import NullPool
 
 from src.core.config import get_settings
 
@@ -19,15 +20,22 @@ def get_async_engine() -> AsyncEngine:
     global _async_engine, _async_session_factory
     if _async_engine is None:
         settings = get_settings()
-        engine_kwargs: dict[str, Any] = {
-            "echo": False,
-            "future": True,
-            "pool_pre_ping": settings.db_pool_pre_ping,
-            "pool_size": settings.db_pool_size,
-            "max_overflow": settings.db_max_overflow,
-            "pool_timeout": settings.db_pool_timeout,
-            "pool_recycle": settings.db_pool_recycle,
-        }
+        if settings.is_test or settings.is_development:
+            engine_kwargs: dict[str, Any] = {
+                "echo": False,
+                "future": True,
+                "poolclass": NullPool,
+            }
+        else:
+            engine_kwargs = {
+                "echo": False,
+                "future": True,
+                "pool_pre_ping": settings.db_pool_pre_ping,
+                "pool_size": settings.db_pool_size,
+                "max_overflow": settings.db_max_overflow,
+                "pool_timeout": settings.db_pool_timeout,
+                "pool_recycle": settings.db_pool_recycle,
+            }
         _async_engine = create_async_engine(settings.database_url, **engine_kwargs)
         _async_session_factory = async_sessionmaker(
             bind=_async_engine,
