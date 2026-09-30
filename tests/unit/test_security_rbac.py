@@ -83,12 +83,8 @@ async def test_auth_login_and_refresh_flow() -> None:
         data = login_res.json()
         assert "access_token" in data
         assert "refresh_token" in data
-        ref_tok = data["refresh_token"]
 
-        ref_res = await client.post(
-            "/api/v1/auth/refresh",
-            json={"refresh_token": ref_tok},
-        )
+        ref_res = await client.post("/api/v1/auth/refresh")
         assert ref_res.status_code == 200
         new_data = ref_res.json()
         assert "access_token" in new_data
@@ -153,17 +149,14 @@ async def test_cookie_auth_and_silent_refresh_flow() -> None:
         assert me_res.status_code == 200
         assert me_res.json()["role"] == "admin"
 
-        refresh_res = await client.post("/api/v1/auth/refresh", json={})
+        refresh_res = await client.post("/api/v1/auth/refresh")
         assert refresh_res.status_code == 200
         assert "access_token" in refresh_res.json()
 
         logout_res = await client.post("/api/v1/auth/logout")
         assert logout_res.status_code == 200
 
-        after_logout_refresh = await client.post(
-            "/api/v1/auth/refresh",
-            json={"refresh_token": login_res.json()["refresh_token"]},
-        )
+        after_logout_refresh = await client.post("/api/v1/auth/refresh")
         assert after_logout_refresh.status_code == 401
 
 
@@ -193,8 +186,10 @@ async def test_logout_all_devices_flow() -> None:
         )
         assert logout_all.status_code == 200
 
-        ref1 = await client.post("/api/v1/auth/refresh", json={"refresh_token": tok1})
+        client.cookies.set("te_refresh_token", tok1)
+        ref1 = await client.post("/api/v1/auth/refresh")
         assert ref1.status_code == 401
 
-        ref2 = await client.post("/api/v1/auth/refresh", json={"refresh_token": tok2})
+        client.cookies.set("te_refresh_token", tok2)
+        ref2 = await client.post("/api/v1/auth/refresh")
         assert ref2.status_code == 401

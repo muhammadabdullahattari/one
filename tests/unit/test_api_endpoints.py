@@ -72,6 +72,12 @@ async def test_auth_login_and_me_lifecycle(client: AsyncClient) -> None:
     assert me_data["role"] == "admin"
     assert me_data["principal_id"] == token_data["user_id"]
 
+    refresh_res = await client.post("/api/v1/auth/refresh")
+    assert refresh_res.status_code == 200
+    ref_data = refresh_res.json()
+    assert "access_token" in ref_data
+    assert ref_data["user_id"] == token_data["user_id"]
+
 
 async def test_auth_invalid_credentials(client: AsyncClient) -> None:
     res = await client.post(

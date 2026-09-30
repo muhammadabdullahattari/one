@@ -16,7 +16,6 @@ from src.api.schemas.auth import (
     KeyRotationResponse,
     LoginRequest,
     PrincipalResponse,
-    RefreshTokenRequest,
     TokenResponse,
     UserCreateRequest,
     UserResponse,
@@ -144,20 +143,15 @@ async def login(
 async def refresh_token(
     request: Request,
     response: Response,
-    request_data: RefreshTokenRequest | None,
     session_repo: Annotated[UserSessionRepository, Depends(get_user_session_repository)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> TokenResponse:
-    tok: str | None = None
-    if request_data and request_data.refresh_token:
-        tok = request_data.refresh_token
-    else:
-        tok = CookieManager.get_refresh_token_from_cookies(request)
+    tok = CookieManager.get_refresh_token_from_cookies(request)
 
     if not tok:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing refresh token in request body or cookie.",
+            detail="Missing refresh token cookie.",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
