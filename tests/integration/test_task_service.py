@@ -48,3 +48,34 @@ async def test_full_task_lifecycle_end_to_end() -> None:
     assert completed_task is not None
     assert completed_task.status == TaskStatus.SUCCEEDED
     assert completed_task.result == {"total": 115.0}
+
+
+@pytest.mark.asyncio
+async def test_task_submission_with_idempotency_key() -> None:
+    test_queue = f"idem-q-{uuid4().hex[:6]}"
+    async with session_scope() as session:
+        queue_repo = QueueRepository(session)
+        await queue_repo.create_or_update_queue(
+            Queue(queue_name=test_queue, broker_backend="native")
+        )
+
+    task_service = TaskLifecycleService()
+    idemp_key = f"idemp-{uuid4().hex}"
+    task1 = await task_service.submit_task(
+        task_type="dummy_idempotent_task",
+        payload={"order_id": 42},
+        queue=test_queue,
+        idempotency_key=idemp_key,
+        tenant_id="tenant-idemp",
+    )
+    assert task1 is not None
+    assert task1.idempotency_key == idemp_key
+
+    task2 = await task_service.submit_task(
+        task_type="dummy_idempotent_task",
+        payload={"order_id": 42},
+        queue=test_queue,
+        idempotency_key=idemp_key,
+        tenant_id="tenant-idemp",
+    )
+    assert task2.task_id == task1.task_id

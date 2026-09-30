@@ -133,6 +133,66 @@ async def test_queues_list_and_create(client: AsyncClient) -> None:
     assert depth_data["depth"] == 0
 
 
+async def test_queue_update_and_broker_backend_validation(client: AsyncClient) -> None:
+    q_name = f"test-update-q-{uuid4().hex[:6]}"
+    # 1. Create with empty broker_backend should default to "native"
+    create_res = await client.post(
+        "/api/v1/queues",
+        json={
+            "queue_name": q_name,
+            "default_priority": 5,
+            "max_concurrency": 50,
+            "rate_limit_rps": 100,
+            "broker_backend": "",
+        },
+    )
+    assert create_res.status_code == 201
+    assert create_res.json()["broker_backend"] == "native"
+
+    # 2. Update with empty string broker_backend (Swagger UI case) should preserve existing
+    update_res = await client.put(
+        f"/api/v1/queues/{q_name}",
+        json={
+            "enabled": True,
+            "default_priority": 2,
+            "max_concurrency": 30,
+            "rate_limit_rps": 60,
+            "broker_backend": "",
+        },
+    )
+    assert update_res.status_code == 200
+    updated = update_res.json()
+    assert updated["default_priority"] == 2
+    assert updated["broker_backend"] == "native"
+
+    # 3. Update with valid registered backend ("redis")
+    update_redis = await client.put(
+        f"/api/v1/queues/{q_name}",
+        json={"broker_backend": "redis"},
+    )
+    assert update_redis.status_code == 200
+    assert update_redis.json()["broker_backend"] == "redis"
+
+    # 4. Update with unregistered backend should return 400 Bad Request
+    update_invalid = await client.put(
+        f"/api/v1/queues/{q_name}",
+        json={"broker_backend": "unknown_broker"},
+    )
+    assert update_invalid.status_code == 400
+    assert "not registered or supported" in update_invalid.json()["error"]["message"]
+
+    # 5. Create with unregistered backend should return 400 Bad Request
+    create_invalid = await client.post(
+        "/api/v1/queues",
+        json={
+            "queue_name": f"test-invalid-q-{uuid4().hex[:6]}",
+            "broker_backend": "nonexistent_backend",
+        },
+    )
+    assert create_invalid.status_code == 400
+    assert "not registered or supported" in create_invalid.json()["error"]["message"]
+
+
 async def test_workers_list(client: AsyncClient) -> None:
     res = await client.get("/api/v1/workers")
     assert res.status_code == 200

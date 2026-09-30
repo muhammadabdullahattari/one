@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from src.api.schemas.common import PaginatedResponse
 
@@ -28,13 +28,38 @@ class QueueCreateRequest(BaseModel):
         default="native", description="Broker backend name ('native' or 'redis')."
     )
 
+    @field_validator("broker_backend", mode="before")
+    @classmethod
+    def normalize_broker_backend(cls, v: object) -> str:
+        if isinstance(v, str):
+            v_stripped = v.strip()
+            if not v_stripped:
+                return "native"
+            return v_stripped
+        return "native" if v is None else str(v)
+
 
 class QueueUpdateRequest(BaseModel):
     enabled: bool | None = Field(None, description="Toggle queue active state.")
     default_priority: int | None = Field(None, ge=1, le=10, description="Default priority.")
     max_concurrency: int | None = Field(None, ge=1, le=10000, description="Max concurrency.")
     rate_limit_rps: int | None = Field(None, ge=1, description="Rate limit RPS.")
-    broker_backend: str | None = Field(None, description="Broker backend.")
+    broker_backend: str | None = Field(
+        None,
+        description="Broker backend ('native', 'redis', etc.). Omit or leave empty to keep unchanged.",
+    )
+
+    @field_validator("broker_backend", mode="before")
+    @classmethod
+    def normalize_broker_backend(cls, v: object) -> str | None:
+        if v is None:
+            return None
+        if isinstance(v, str):
+            v_stripped = v.strip()
+            if not v_stripped:
+                return None
+            return v_stripped
+        return str(v)
 
 
 class QueueResponse(BaseModel):

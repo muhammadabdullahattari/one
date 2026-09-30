@@ -16,10 +16,23 @@ class QueueRepository(BaseRepository[QueueModel]):
         m = res.scalar_one_or_none()
         return self._to_entity(m) if m else None
 
+    async def backend_exists(self, backend_name: str) -> bool:
+        from src.persistence.models.broker_backend import BrokerBackendModel
+
+        stmt = (
+            select(func.count())
+            .select_from(BrokerBackendModel)
+            .where(BrokerBackendModel.backend_name == backend_name)
+        )
+        res = await self.session.execute(stmt)
+        return bool((res.scalar() or 0) > 0)
+
     async def create_or_update_queue(self, queue: Queue) -> Queue:
         now = datetime.now(UTC)
+        backend = queue.broker_backend or "native"
         existing = await self.get_by_name(queue.queue_name)
         if existing:
+            backend = queue.broker_backend or existing.broker_backend or "native"
             stmt = (
                 update(QueueModel)
                 .where(QueueModel.queue_name == queue.queue_name)
@@ -30,11 +43,13 @@ class QueueRepository(BaseRepository[QueueModel]):
                     rate_limit_rps=queue.rate_limit_rps,
                     retry_defaults=queue.retry_defaults,
                     retention_days=queue.retention_days,
-                    broker_backend=queue.broker_backend,
+                    broker_backend=backend,
                     updated_at=now,
                 )
             )
             await self.session.execute(stmt)
+            queue.updated_at = now
+            queue.broker_backend = backend
         else:
             model = QueueModel(
                 queue_name=queue.queue_name,
@@ -44,12 +59,14 @@ class QueueRepository(BaseRepository[QueueModel]):
                 rate_limit_rps=queue.rate_limit_rps,
                 retry_defaults=queue.retry_defaults,
                 retention_days=queue.retention_days,
-                broker_backend=queue.broker_backend,
+                broker_backend=backend,
                 created_at=queue.created_at or now,
                 updated_at=now,
             )
             self.session.add(model)
             await self.session.flush()
+            queue.updated_at = now
+            queue.broker_backend = backend
         return queue
 
     async def list_queues(self) -> list[Queue]:

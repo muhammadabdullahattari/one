@@ -82,6 +82,7 @@ class TaskLifecycleService:
             now + timedelta(seconds=delay_seconds) if delay_seconds and delay_seconds > 0 else now
         )
         status = TaskStatus.SCHEDULED if delay_seconds and delay_seconds > 0 else TaskStatus.PENDING
+        req_hash = ""
         if idempotency_key:
             req_hash = hashlib.sha256(
                 json.dumps(payload or {}, sort_keys=True).encode()
@@ -94,15 +95,6 @@ class TaskLifecycleService:
                     existing_task = await self._task_repo.get_by_id(existing.task_id)
                     if existing_task:
                         return existing_task
-                await self._idempotency_repo.record_key(
-                    IdempotencyKey(
-                        scope=tenant,
-                        idempotency_key=idempotency_key,
-                        task_id=task_id,
-                        request_hash=req_hash,
-                        expires_at=now + timedelta(seconds=self.settings.lease_seconds * 10),
-                    )
-                )
             else:
                 async with session_scope() as session:
                     idem_repo = IdempotencyRepository(session)
@@ -114,15 +106,6 @@ class TaskLifecycleService:
                         existing_task = await task_repo.get_by_id(existing.task_id)
                         if existing_task:
                             return existing_task
-                    await idem_repo.record_key(
-                        IdempotencyKey(
-                            scope=tenant,
-                            idempotency_key=idempotency_key,
-                            task_id=task_id,
-                            request_hash=req_hash,
-                            expires_at=now + timedelta(seconds=self.settings.lease_seconds * 10),
-                        )
-                    )
         task = Task(
             task_id=task_id,
             tenant_id=tenant,
@@ -146,10 +129,47 @@ class TaskLifecycleService:
         )
         if self._task_repo:
             await self._task_repo.create_with_outbox(task, outbox)
+            if idempotency_key and self._idempotency_repo:
+                recorded = await self._idempotency_repo.record_key(
+                    IdempotencyKey(
+                        scope=tenant,
+                        idempotency_key=idempotency_key,
+                        task_id=task_id,
+                        request_hash=req_hash,
+                        expires_at=now + timedelta(seconds=self.settings.lease_seconds * 10),
+                    )
+                )
+                if not recorded:
+                    existing = await self._idempotency_repo.get_key(
+                        scope=tenant, idempotency_key=idempotency_key
+                    )
+                    if existing:
+                        existing_task = await self._task_repo.get_by_id(existing.task_id)
+                        if existing_task:
+                            return existing_task
         else:
             async with session_scope() as session:
                 task_repo = TaskRepository(session)
                 await task_repo.create_with_outbox(task, outbox)
+                if idempotency_key:
+                    idem_repo = IdempotencyRepository(session)
+                    recorded = await idem_repo.record_key(
+                        IdempotencyKey(
+                            scope=tenant,
+                            idempotency_key=idempotency_key,
+                            task_id=task_id,
+                            request_hash=req_hash,
+                            expires_at=now + timedelta(seconds=self.settings.lease_seconds * 10),
+                        )
+                    )
+                    if not recorded:
+                        existing = await idem_repo.get_key(
+                            scope=tenant, idempotency_key=idempotency_key
+                        )
+                        if existing:
+                            existing_task = await task_repo.get_by_id(existing.task_id)
+                            if existing_task:
+                                return existing_task
         logger.info("task_submitted", task_id=str(task.task_id), queue=queue, task_type=task_type)
         return task
 

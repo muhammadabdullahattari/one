@@ -84,7 +84,7 @@ class TaskResponse(BaseModel):
     idempotency_key: str | None = Field(None, description="Idempotency key if submitted.")
     tenant_id: str | None = Field(None, description="Tenant scope.")
     created_at: datetime = Field(..., description="Creation timestamp.")
-    scheduled_at: datetime = Field(..., description="Eligible execution timestamp.")
+    scheduled_at: datetime  | None  = Field(None, description="Eligible execution timestamp.")
     started_at: datetime | None = Field(None, description="Current or last run start time.")
     finished_at: datetime | None = Field(None, description="Terminal state timestamp.")
     result_ref: str | None = Field(None, description="Reference pointer if result offloaded.")

@@ -50,13 +50,19 @@ async def create_queue(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Queue '{request.queue_name}' already exists.",
         )
+    target_backend = request.broker_backend or "native"
+    if not await queue_repo.backend_exists(target_backend):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Broker backend '{target_backend}' is not registered or supported.",
+        )
     queue = Queue(
         queue_name=request.queue_name,
         enabled=request.enabled,
         default_priority=request.default_priority,
         max_concurrency=request.max_concurrency,
         rate_limit_rps=request.rate_limit_rps if request.rate_limit_rps is not None else 100,
-        broker_backend=request.broker_backend,
+        broker_backend=target_backend,
     )
     saved = await queue_repo.create_or_update_queue(queue)
     return QueueResponse.model_validate(saved)
@@ -88,6 +94,16 @@ async def update_queue(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"Queue '{name}' not found."
         )
+    target_backend = (
+        request.broker_backend
+        if request.broker_backend is not None
+        else existing.broker_backend
+    )
+    if not await queue_repo.backend_exists(target_backend):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Broker backend '{target_backend}' is not registered or supported.",
+        )
     updated_queue = Queue(
         queue_name=name,
         enabled=request.enabled if request.enabled is not None else existing.enabled,
@@ -100,9 +116,9 @@ async def update_queue(
         rate_limit_rps=request.rate_limit_rps
         if request.rate_limit_rps is not None
         else existing.rate_limit_rps,
-        broker_backend=request.broker_backend
-        if request.broker_backend is not None
-        else existing.broker_backend,
+        retry_defaults=existing.retry_defaults,
+        retention_days=existing.retention_days,
+        broker_backend=target_backend,
         created_at=existing.created_at,
     )
     saved = await queue_repo.create_or_update_queue(updated_queue)
