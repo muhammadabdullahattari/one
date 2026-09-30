@@ -43,8 +43,7 @@ class DLQRepository(BaseRepository[DLQEntryModel]):
         stmt = (
             update(DLQEntryModel)
             .where(
-                (DLQEntryModel.dlq_id == task_or_dlq_id)
-                | (DLQEntryModel.task_id == task_or_dlq_id)
+                (DLQEntryModel.dlq_id == task_or_dlq_id) | (DLQEntryModel.task_id == task_or_dlq_id)
             )
             .values(
                 replay_count=DLQEntryModel.replay_count + 1,
@@ -53,14 +52,9 @@ class DLQRepository(BaseRepository[DLQEntryModel]):
         )
         await self.session.execute(stmt)
 
-    async def list_entries(
-        self, limit: int = 50, offset: int = 0
-    ) -> list[DLQEntry]:
+    async def list_entries(self, limit: int = 50, offset: int = 0) -> list[DLQEntry]:
         stmt = (
-            select(DLQEntryModel)
-            .order_by(DLQEntryModel.dead_at.desc())
-            .limit(limit)
-            .offset(offset)
+            select(DLQEntryModel).order_by(DLQEntryModel.dead_at.desc()).limit(limit).offset(offset)
         )
         res = await self.session.execute(stmt)
         return [self._to_entity(m) for m in res.scalars().all()]

@@ -42,7 +42,9 @@ def test_ut_003_retry_classification() -> None:
     policy = RetryPolicy(max_attempts=3)
     assert policy.is_retryable(attempt=1, exception=TimeoutError("Gateway timed out")) is True
     assert policy.is_retryable(attempt=1, exception=ConnectionError("Connection reset")) is True
-    assert policy.is_retryable(attempt=1, exception=ValueError("Invalid syntax in payload")) is False
+    assert (
+        policy.is_retryable(attempt=1, exception=ValueError("Invalid syntax in payload")) is False
+    )
     assert policy.is_retryable(attempt=1, exception=KeyError("missing_field")) is False
     assert policy.is_retryable(attempt=3, exception=TimeoutError("Max attempts reached")) is False
 
@@ -138,7 +140,9 @@ def test_ut_009_state_transition_guard() -> None:
 
 
 def test_ut_010_error_sanitization() -> None:
-    raw_error = "FATAL: connection failed postgresql://user:super_secret_password_123@db.internal:5432/app"
+    raw_error = (
+        "FATAL: connection failed postgresql://user:super_secret_password_123@db.internal:5432/app"
+    )
     sanitized = sanitize_error_message(raw_error)
     assert "super_secret_password_123" not in sanitized
     assert "***" in sanitized
@@ -160,9 +164,7 @@ def test_ut_012_schedule_next_run() -> None:
 
 def test_ut_013_timezone_conversion() -> None:
     base_time = datetime(2026, 9, 29, 10, 0, 0, tzinfo=UTC)
-    next_run = compute_next_run(
-        "0 12 * * *", tz_name="America/New_York", base_time=base_time
-    )
+    next_run = compute_next_run("0 12 * * *", tz_name="America/New_York", base_time=base_time)
     assert next_run is not None
     assert next_run.tzinfo == UTC
     assert next_run.hour == 16

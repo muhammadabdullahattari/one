@@ -78,7 +78,12 @@ async def test_dlq_replay_does_not_double_submit() -> None:
         await q_repo.create_or_update_queue(Queue(queue_name=queue, broker_backend="native"))
 
         t_repo = TaskRepository(session)
-        task = Task(task_id=task_id, task_type="dlq_double_submit_check", queue=queue, status=TaskStatus.DEAD)
+        task = Task(
+            task_id=task_id,
+            task_type="dlq_double_submit_check",
+            queue=queue,
+            status=TaskStatus.DEAD,
+        )
         await t_repo.create_with_outbox(task, TaskOutbox(task_id=task_id))
 
         dlq_repo = DLQRepository(session)
