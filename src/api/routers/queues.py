@@ -11,6 +11,7 @@ from src.api.schemas.queues import (
     QueueUpdateRequest,
 )
 from src.api.schemas.tasks import TaskListResponse, TaskResponse
+from src.core.constants import DEFAULT_QUEUE_NAME, TaskStatus
 from src.domain.entities import Queue
 from src.persistence.repositories.queue_repository import QueueRepository
 from src.persistence.repositories.task_repository import TaskRepository
@@ -132,14 +133,53 @@ async def delete_queue(
     name: str,
     queue_repo: Annotated[QueueRepository, Depends(get_queue_repository)],
     principal: Annotated[Principal, Depends(require_role("admin"))],
+    force: bool = Query(
+        False,
+        description="If true, reassigns completed/historical tasks to 'default' before deleting.",
+    ),
 ) -> None:
-    depth = await queue_repo.get_queue_depth(name)
-    if depth > 0:
+    if name == DEFAULT_QUEUE_NAME:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The default system queue cannot be deleted.",
+        )
+    existing = await queue_repo.get_by_name(name)
+    if not existing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Queue '{name}' not found."
+        )
+
+    active_statuses = [
+        TaskStatus.PENDING.value,
+        TaskStatus.SCHEDULED.value,
+        TaskStatus.QUEUED.value,
+        TaskStatus.RUNNING.value,
+        TaskStatus.RETRY_WAIT.value,
+    ]
+    active_count = await queue_repo.count_tasks(name, active_statuses)
+    if active_count > 0:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Cannot delete queue '{name}' because it contains {depth} pending tasks.",
+            detail=f"Cannot delete queue '{name}' because it contains {active_count} active or pending tasks. Cancel or drain them before deleting.",
         )
-    deleted = await queue_repo.delete_queue(name)
+
+    total_tasks = await queue_repo.count_tasks(name)
+    if total_tasks > 0:
+        if not force:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Cannot delete queue '{name}' because it is still referenced by {total_tasks} completed task(s). Pass force=true to reassign historical tasks to '{DEFAULT_QUEUE_NAME}' and delete.",
+            )
+        await queue_repo.reassign_tasks(from_queue=name, to_queue=DEFAULT_QUEUE_NAME)
+
+    try:
+        deleted = await queue_repo.delete_queue(name)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Cannot delete queue '{name}' due to referencing tasks or constraints: {exc}",
+        ) from exc
+
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"Queue '{name}' not found."

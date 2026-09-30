@@ -84,13 +84,55 @@ class QueueRepository(BaseRepository[QueueModel]):
         res = await self.session.execute(stmt)
         return int(res.scalar_one() or 0)
 
+    async def count_tasks(self, queue_name: str, statuses: list[str] | None = None) -> int:
+        stmt = select(func.count(TaskModel.task_id)).where(TaskModel.queue == queue_name)
+        if statuses:
+            stmt = stmt.where(TaskModel.status.in_(statuses))
+        res = await self.session.execute(stmt)
+        return int(res.scalar_one() or 0)
+
+    async def reassign_tasks(self, from_queue: str, to_queue: str = "default") -> int:
+        from src.persistence.models.schedule import ScheduleModel
+
+        terminal_statuses = [
+            TaskStatus.SUCCEEDED.value,
+            TaskStatus.FAILED.value,
+            TaskStatus.TIMED_OUT.value,
+            TaskStatus.CANCELLED.value,
+            TaskStatus.DEAD.value,
+        ]
+        stmt = (
+            update(TaskModel)
+            .where(
+                TaskModel.queue == from_queue,
+                TaskModel.status.in_(terminal_statuses),
+            )
+            .values(queue=to_queue)
+        )
+        res = await self.session.execute(stmt)
+        task_rowcount = int(getattr(res, "rowcount", 0))
+
+        sched_stmt = (
+            update(ScheduleModel)
+            .where(ScheduleModel.queue == from_queue)
+            .values(queue=to_queue)
+        )
+        await self.session.execute(sched_stmt)
+
+        return task_rowcount
+
     async def delete_queue(self, queue_name: str) -> bool:
         from sqlalchemy import delete
+        from sqlalchemy.exc import IntegrityError
 
-        stmt = delete(QueueModel).where(QueueModel.queue_name == queue_name)
-        res = await self.session.execute(stmt)
-        rowcount = getattr(res, "rowcount", 0)
-        return bool(rowcount and rowcount > 0)
+        try:
+            stmt = delete(QueueModel).where(QueueModel.queue_name == queue_name)
+            res = await self.session.execute(stmt)
+            rowcount = getattr(res, "rowcount", 0)
+            return bool(rowcount and rowcount > 0)
+        except IntegrityError:
+            await self.session.rollback()
+            raise
 
     async def get_oldest_task_age(self, queue_name: str) -> float | None:
         stmt = (

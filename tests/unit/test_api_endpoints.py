@@ -193,6 +193,49 @@ async def test_queue_update_and_broker_backend_validation(client: AsyncClient) -
     assert "not registered or supported" in create_invalid.json()["error"]["message"]
 
 
+async def test_queue_deletion_and_task_reference_handling(client: AsyncClient) -> None:
+    # 1. System default queue cannot be deleted
+    del_default = await client.delete("/api/v1/queues/default")
+    assert del_default.status_code == 400
+    assert "default system queue cannot be deleted" in del_default.json()["error"]["message"]
+
+    # 2. Non-existent queue returns 404
+    del_404 = await client.delete("/api/v1/queues/nonexistent-queue-xyz")
+    assert del_404.status_code == 404
+
+    # 3. Create a test queue
+    q_name = f"test-del-q-{uuid4().hex[:6]}"
+    create_res = await client.post(
+        "/api/v1/queues",
+        json={"queue_name": q_name, "broker_backend": "native"},
+    )
+    assert create_res.status_code == 201
+
+    # 4. Submit a task into the queue and cancel it (so it has a completed task referencing it)
+    task_res = await client.post(
+        "/api/v1/tasks",
+        json={"task_type": "test_del_task", "queue": q_name, "payload": {"foo": "bar"}},
+    )
+    assert task_res.status_code == 202
+    task_id = task_res.json()["task_id"]
+
+    cancel_res = await client.delete(f"/api/v1/tasks/{task_id}")
+    assert cancel_res.status_code == 200
+
+    # 5. Attempt DELETE without force -> returns 409 Conflict (not 500)
+    del_conflict = await client.delete(f"/api/v1/queues/{q_name}")
+    assert del_conflict.status_code == 409
+    assert "completed task(s)" in del_conflict.json()["error"]["message"]
+
+    # 6. Attempt DELETE with force=true -> returns 204 No Content
+    del_force = await client.delete(f"/api/v1/queues/{q_name}?force=true")
+    assert del_force.status_code == 204
+
+    # 7. Queue is now gone -> 404
+    get_gone = await client.get(f"/api/v1/queues/{q_name}")
+    assert get_gone.status_code == 404
+
+
 async def test_workers_list(client: AsyncClient) -> None:
     res = await client.get("/api/v1/workers")
     assert res.status_code == 200
