@@ -40,6 +40,29 @@ jobs:
     name: Unit Tests
     runs-on: ubuntu-latest
     needs: lint
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: task_engine_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - uses: actions/checkout@v4
 
@@ -52,11 +75,19 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen
 
+      - name: Run database migrations
+        run: uv run alembic upgrade head
+        env:
+          APP_ENV: development
+          DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/task_engine_test
+          DATABASE_URL_SYNC: postgresql://test:test@localhost:5432/task_engine_test
+
       - name: Run unit tests
         run: uv run pytest tests/unit/ -v --cov=src --cov-report=xml
         env:
           APP_ENV: development
-          DATABASE_URL: postgresql+asyncpg://test:test@localhost/test
+          DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/task_engine_test
+          DATABASE_URL_SYNC: postgresql://test:test@localhost:5432/task_engine_test
           REDIS_URL: redis://localhost:6379/0
           SECRET_KEY: test-secret-key-for-ci-only-not-real
           API_AUTH_MODE: jwt
@@ -104,6 +135,13 @@ jobs:
 
       - name: Install dependencies
         run: uv sync --frozen
+
+      - name: Run database migrations
+        run: uv run alembic upgrade head
+        env:
+          APP_ENV: development
+          DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/task_engine_test
+          DATABASE_URL_SYNC: postgresql://test:test@localhost:5432/task_engine_test
 
       - name: Run integration tests
         run: uv run pytest tests/integration/ -v
