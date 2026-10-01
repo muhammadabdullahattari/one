@@ -112,9 +112,7 @@ async def get_latency(
     exec_ms = (
         func.extract("epoch", TaskAttemptModel.finished_at - TaskAttemptModel.started_at) * 1000.0
     )
-    wait_ms = (
-        func.extract("epoch", TaskAttemptModel.started_at - TaskModel.created_at) * 1000.0
-    )
+    wait_ms = func.extract("epoch", TaskAttemptModel.started_at - TaskModel.created_at) * 1000.0
 
     exec_stmt = (
         select(
@@ -149,8 +147,18 @@ async def get_latency(
         val = getattr(row, field, None)
         return round(float(val), 3) if val is not None else 0.0
 
-    ep50, ep95, ep99, eavg = _ms(exec_row, "p50"), _ms(exec_row, "p95"), _ms(exec_row, "p99"), _ms(exec_row, "avg")
-    wp50, wp95, wp99, wavg = _ms(wait_row, "p50"), _ms(wait_row, "p95"), _ms(wait_row, "p99"), _ms(wait_row, "avg")
+    ep50, ep95, ep99, eavg = (
+        _ms(exec_row, "p50"),
+        _ms(exec_row, "p95"),
+        _ms(exec_row, "p99"),
+        _ms(exec_row, "avg"),
+    )
+    wp50, wp95, wp99, wavg = (
+        _ms(wait_row, "p50"),
+        _ms(wait_row, "p95"),
+        _ms(wait_row, "p99"),
+        _ms(wait_row, "avg"),
+    )
 
     return LatencyResponse(
         queue_wait=LatencyPercentiles(p50_ms=wp50, p95_ms=wp95, p99_ms=wp99, avg_ms=wavg),
@@ -251,20 +259,17 @@ async def get_task_type_stats(
 async def get_queue_depth_trend(
     queue_repo: Annotated[QueueRepository, Depends(get_queue_repository)],
 ) -> QueueDepthTrendResponse:
-    queues = await queue_repo.list_queues()
     now = datetime.now(UTC)
-    points: list[QueueDepthPoint] = []
-    for q in queues:
-        depth = await queue_repo.get_queue_depth(q.queue_name)
-        oldest_age = await queue_repo.get_oldest_task_age(q.queue_name)
-        points.append(
-            QueueDepthPoint(
-                queue_name=q.queue_name,
-                depth=depth,
-                oldest_task_age_seconds=oldest_age,
-                timestamp=now,
-            )
+    summary = await queue_repo.get_queue_backlog_summary()
+    points = [
+        QueueDepthPoint(
+            queue_name=q_name,
+            depth=depth,
+            oldest_task_age_seconds=oldest_age,
+            timestamp=now,
         )
+        for q_name, depth, oldest_age in summary
+    ]
     return QueueDepthTrendResponse(queues=points)
 
 
@@ -278,27 +283,27 @@ async def get_oldest_task_age_report(
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> OldestTaskAgeResponse:
     queues = await queue_repo.list_queues()
+    oldest_stmt = (
+        select(TaskModel.task_id, TaskModel.queue, TaskModel.created_at)
+        .where(
+            TaskModel.status.in_(
+                [TaskStatus.PENDING.value, TaskStatus.QUEUED.value, TaskStatus.RETRY_WAIT.value]
+            )
+        )
+        .distinct(TaskModel.queue)
+        .order_by(TaskModel.queue, TaskModel.created_at.asc())
+    )
+    res = await session.execute(oldest_stmt)
+    oldest_by_queue = {row.queue: (row.task_id, row.created_at) for row in res.all()}
+    now = datetime.now(UTC)
     items: list[OldestTaskAgeItem] = []
     for q in queues:
-        stmt = (
-            select(TaskModel.task_id, TaskModel.created_at)
-            .where(
-                TaskModel.queue == q.queue_name,
-                TaskModel.status.in_(
-                    [TaskStatus.PENDING.value, TaskStatus.QUEUED.value, TaskStatus.RETRY_WAIT.value]
-                ),
-            )
-            .order_by(TaskModel.created_at.asc())
-            .limit(1)
-        )
-        res = await session.execute(stmt)
-        row = res.first()
-        oldest_id = row[0] if row else None
-        oldest_created = row[1] if row else None
+        task_info = oldest_by_queue.get(q.queue_name)
+        oldest_id = task_info[0] if task_info else None
+        oldest_created = task_info[1] if task_info else None
         age_seconds: float | None = None
         warning = False
         if oldest_created:
-            now = datetime.now(UTC)
             if oldest_created.tzinfo is None:
                 oldest_created = oldest_created.replace(tzinfo=UTC)
             age_seconds = max(0.0, (now - oldest_created).total_seconds())

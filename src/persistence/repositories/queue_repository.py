@@ -84,6 +84,44 @@ class QueueRepository(BaseRepository[QueueModel]):
         res = await self.session.execute(stmt)
         return int(res.scalar_one() or 0)
 
+    async def get_queue_backlog_summary(self) -> list[tuple[str, int, float | None]]:
+        now = datetime.now(UTC)
+        stmt = (
+            select(
+                QueueModel.queue_name,
+                func.count(TaskModel.task_id).label("depth"),
+                func.min(TaskModel.created_at).label("oldest_created_at"),
+            )
+            .outerjoin(
+                TaskModel,
+                (TaskModel.queue == QueueModel.queue_name)
+                & (
+                    TaskModel.status.in_(
+                        [
+                            TaskStatus.PENDING.value,
+                            TaskStatus.QUEUED.value,
+                            TaskStatus.RETRY_WAIT.value,
+                        ]
+                    )
+                ),
+            )
+            .group_by(QueueModel.queue_name)
+            .order_by(QueueModel.queue_name.asc())
+        )
+        res = await self.session.execute(stmt)
+        summary: list[tuple[str, int, float | None]] = []
+        for row in res.all():
+            q_name = str(row[0])
+            depth = int(row[1] or 0)
+            oldest_created = row[2]
+            oldest_age: float | None = None
+            if oldest_created is not None:
+                if oldest_created.tzinfo is None:
+                    oldest_created = oldest_created.replace(tzinfo=UTC)
+                oldest_age = max(0.0, round((now - oldest_created).total_seconds(), 3))
+            summary.append((q_name, depth, oldest_age))
+        return summary
+
     async def count_tasks(self, queue_name: str, statuses: list[str] | None = None) -> int:
         stmt = select(func.count(TaskModel.task_id)).where(TaskModel.queue == queue_name)
         if statuses:
@@ -113,9 +151,7 @@ class QueueRepository(BaseRepository[QueueModel]):
         task_rowcount = int(getattr(res, "rowcount", 0))
 
         sched_stmt = (
-            update(ScheduleModel)
-            .where(ScheduleModel.queue == from_queue)
-            .values(queue=to_queue)
+            update(ScheduleModel).where(ScheduleModel.queue == from_queue).values(queue=to_queue)
         )
         await self.session.execute(sched_stmt)
 
