@@ -41,9 +41,10 @@ class OutboxPublisher:
             entries = await outbox_repo.get_undelivered(limit=self.batch_size)
             if not entries:
                 return 0
+            tasks_map = await task_repo.get_by_ids([entry.task_id for entry in entries])
             for entry in entries:
                 try:
-                    task = await task_repo.get_by_id(entry.task_id)
+                    task = tasks_map.get(entry.task_id)
                     if not task:
                         logger.warning(
                             "Outbox task not found in database", task_id=str(entry.task_id)

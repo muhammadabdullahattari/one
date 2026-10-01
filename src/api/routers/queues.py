@@ -96,9 +96,7 @@ async def update_queue(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"Queue '{name}' not found."
         )
     target_backend = (
-        request.broker_backend
-        if request.broker_backend is not None
-        else existing.broker_backend
+        request.broker_backend if request.broker_backend is not None else existing.broker_backend
     )
     if not await queue_repo.backend_exists(target_backend):
         raise HTTPException(
@@ -194,8 +192,7 @@ async def delete_queue(
 async def get_queue_depth(
     name: str, queue_repo: Annotated[QueueRepository, Depends(get_queue_repository)]
 ) -> QueueDepthResponse:
-    depth = await queue_repo.get_queue_depth(name)
-    oldest_age = await queue_repo.get_oldest_task_age(name)
+    depth, oldest_age = await queue_repo.get_queue_depth_and_age(name)
     return QueueDepthResponse(queue_name=name, depth=depth, oldest_task_age_seconds=oldest_age)
 
 

@@ -42,12 +42,8 @@ class DLQService:
         now = datetime.now(UTC)
         async with session_scope() as session:
             dlq_repo = DLQRepository(session)
-            task_repo = TaskRepository(session)
             entry = await dlq_repo.get_by_id(dlq_id)
             if not entry:
-                return False
-            task = await task_repo.get_by_id(entry.task_id)
-            if not task:
                 return False
             task_model = await session.get(TaskModel, entry.task_id)
             if not task_model:
@@ -59,9 +55,9 @@ class DLQService:
             task_model.updated_at = now
             task_model.version += 1
             outbox = TaskOutbox(
-                task_id=task.task_id,
+                task_id=task_model.task_id,
                 event_type="task.replayed",
-                payload={"dlq_id": str(dlq_id), "task_type": task.task_type},
+                payload={"dlq_id": str(dlq_id), "task_type": task_model.task_type},
             )
             session.add(
                 TaskOutboxModel(
@@ -75,3 +71,58 @@ class DLQService:
             await dlq_repo.mark_replayed(dlq_id)
             logger.info("task_replayed_from_dlq", dlq_id=str(dlq_id), task_id=str(entry.task_id))
             return True
+
+    async def bulk_replay(
+        self, dlq_ids: list[UUID] | None = None, limit: int = 50, reset_attempts: bool = True
+    ) -> int:
+        from sqlalchemy import select
+
+        now = datetime.now(UTC)
+        async with session_scope() as session:
+            dlq_repo = DLQRepository(session)
+            if dlq_ids:
+                entries: list[DLQEntry] = []
+                for did in dlq_ids:
+                    e = await dlq_repo.get_by_id(did)
+                    if e:
+                        entries.append(e)
+            else:
+                entries = await dlq_repo.list_entries(limit=limit)
+
+            if not entries:
+                return 0
+
+            task_ids = [e.task_id for e in entries]
+            stmt = select(TaskModel).where(TaskModel.task_id.in_(task_ids))
+            res = await session.execute(stmt)
+            task_models = {m.task_id: m for m in res.scalars().all()}
+
+            replayed_count = 0
+            for entry in entries:
+                task_model = task_models.get(entry.task_id)
+                if not task_model:
+                    continue
+                task_model.status = TaskStatus.QUEUED.value
+                task_model.status_reason = f"Operator DLQ replay from {entry.dlq_id}"
+                if reset_attempts:
+                    task_model.attempt_count = 0
+                task_model.updated_at = now
+                task_model.version += 1
+
+                outbox = TaskOutbox(
+                    task_id=task_model.task_id,
+                    event_type="task.replayed",
+                    payload={"dlq_id": str(entry.dlq_id), "task_type": task_model.task_type},
+                )
+                session.add(
+                    TaskOutboxModel(
+                        outbox_id=outbox.outbox_id,
+                        task_id=outbox.task_id,
+                        event_type=outbox.event_type,
+                        payload=outbox.payload,
+                        created_at=now,
+                    )
+                )
+                await dlq_repo.mark_replayed(entry.dlq_id)
+                replayed_count += 1
+            return replayed_count

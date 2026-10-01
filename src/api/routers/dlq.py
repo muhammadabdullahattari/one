@@ -21,9 +21,7 @@ router = APIRouter(prefix="/dlq", tags=["DLQ"])
 
 
 async def _task_queue(session: AsyncSession, task_id: UUID) -> str:
-    res = await session.execute(
-        select(TaskModel.queue).where(TaskModel.task_id == task_id)
-    )
+    res = await session.execute(select(TaskModel.queue).where(TaskModel.task_id == task_id))
     return res.scalar_one_or_none() or "default"
 
 
@@ -125,19 +123,13 @@ async def replay_dlq_entry(
 async def bulk_replay_dlq(
     request: DLQBulkReplayRequest,
     dlq_service: Annotated[DLQService, Depends(get_dlq_service)],
-    dlq_repo: Annotated[DLQRepository, Depends(get_dlq_repository)],
     principal: Annotated[Principal, Depends(require_role("admin", "operator"))],
 ) -> dict[str, int]:
-    replayed_count = 0
-    if request.dlq_ids:
-        for dlq_id in request.dlq_ids:
-            if await dlq_service.replay(dlq_id, reset_attempts=True):
-                replayed_count += 1
-    else:
-        entries = await dlq_repo.list_entries(limit=request.max_count)
-        for e in entries:
-            if await dlq_service.replay(e.dlq_id, reset_attempts=True):
-                replayed_count += 1
+    replayed_count = await dlq_service.bulk_replay(
+        dlq_ids=request.dlq_ids,
+        limit=request.max_count,
+        reset_attempts=True,
+    )
     return {"replayed_count": replayed_count}
 
 

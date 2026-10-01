@@ -84,6 +84,28 @@ class QueueRepository(BaseRepository[QueueModel]):
         res = await self.session.execute(stmt)
         return int(res.scalar_one() or 0)
 
+    async def get_queue_depth_and_age(self, queue_name: str) -> tuple[int, float | None]:
+        now = datetime.now(UTC)
+        stmt = select(
+            func.count(TaskModel.task_id),
+            func.min(TaskModel.created_at),
+        ).where(
+            TaskModel.queue == queue_name,
+            TaskModel.status.in_(
+                [TaskStatus.PENDING.value, TaskStatus.QUEUED.value, TaskStatus.RETRY_WAIT.value]
+            ),
+        )
+        res = await self.session.execute(stmt)
+        row = res.one()
+        depth = int(row[0] or 0)
+        oldest_created = row[1]
+        oldest_age: float | None = None
+        if oldest_created is not None:
+            if oldest_created.tzinfo is None:
+                oldest_created = oldest_created.replace(tzinfo=UTC)
+            oldest_age = max(0.0, round((now - oldest_created).total_seconds(), 3))
+        return depth, oldest_age
+
     async def get_queue_backlog_summary(self) -> list[tuple[str, int, float | None]]:
         now = datetime.now(UTC)
         stmt = (

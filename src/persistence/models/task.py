@@ -34,6 +34,7 @@ class TaskModel(Base, TimestampMixin):
         PG_UUID(as_uuid=True),
         ForeignKey("schedules.schedule_id", ondelete="SET NULL"),
         nullable=True,
+        index=True,
     )
     idempotency_key: Mapped[str | None] = mapped_column(String(256), nullable=True, index=True)
     timeout_seconds: Mapped[int] = mapped_column(Integer, default=300, nullable=False)

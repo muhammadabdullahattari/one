@@ -155,3 +155,18 @@ async def get_task_events(
 ) -> list[TaskEventResponse]:
     events = await task_repo.get_task_events(task_id)
     return [TaskEventResponse.model_validate(e) for e in events]
+
+
+# @router.get("", response_model= TaskEventsData)
+# def getevents( ) -> TaskEventsData :
+
+#     result = get_task_repository.gettaskeventdata()
+
+#     data = TaskEventsData(
+#             task_id = result.task_id ,
+#             tenant_id= result.tenant_id,
+#             task_type= result.task_type,
+#             status = result.status,
+#             )
+
+#     return  data

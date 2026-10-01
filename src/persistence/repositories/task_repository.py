@@ -4,6 +4,7 @@ from uuid import UUID
 
 from sqlalchemy import select, update
 
+from src.api.schemas.tasks import TaskEventsData
 from src.core.constants import TaskEventType, TaskStatus
 from src.domain.entities import Task, TaskAttempt, TaskOutbox
 from src.persistence.models.outbox import TaskOutboxModel
@@ -68,6 +69,19 @@ class TaskRepository(BaseRepository[TaskModel]):
         await self.session.flush()
         return task
 
+    async def gettaskeventdata(self) -> TaskEventsData | None:
+        query = select(TaskModel).limit(1)
+        res = await self.session.execute(query)
+        task = res.scalar_one_or_none()
+        if task is None:
+            return None
+        return TaskEventsData(
+            task_id=task.task_id,
+            tenant_id=str(task.tenant_id),
+            task_type=task.task_type,
+            status=task.status,
+        )
+
     async def get_by_id(self, task_id: UUID) -> Task | None:
         stmt = select(TaskModel).where(TaskModel.task_id == task_id)
         result = await self.session.execute(stmt)
@@ -75,6 +89,13 @@ class TaskRepository(BaseRepository[TaskModel]):
         if model is None:
             return None
         return self._to_entity(model)
+
+    async def get_by_ids(self, task_ids: list[UUID]) -> dict[UUID, Task]:
+        if not task_ids:
+            return {}
+        stmt = select(TaskModel).where(TaskModel.task_id.in_(task_ids))
+        result = await self.session.execute(stmt)
+        return {m.task_id: self._to_entity(m) for m in result.scalars().all()}
 
     async def claim_next(
         self, queue: str, worker_id: str, lease_seconds: int = 300
