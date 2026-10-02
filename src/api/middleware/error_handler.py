@@ -1,7 +1,9 @@
 from datetime import UTC, datetime
+from typing import Any
 
 import structlog
 from fastapi import FastAPI, HTTPException, Request, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
@@ -18,6 +20,18 @@ logger = structlog.get_logger(__name__)
 
 def _get_request_id(request: Request) -> str:
     return getattr(request.state, "request_id", "req-unknown")
+
+
+def _clean_validation_errors(raw_errors: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    cleaned = []
+    for err in raw_errors:
+        item = dict(err)
+        if "ctx" in item and isinstance(item["ctx"], dict):
+            item["ctx"] = {
+                k: str(v) if isinstance(v, Exception) else v for k, v in item["ctx"].items()
+            }
+        cleaned.append(item)
+    return cleaned
 
 
 def register_exception_handlers(app: FastAPI) -> None:
@@ -52,12 +66,24 @@ def register_exception_handlers(app: FastAPI) -> None:
         request: Request, exc: RequestValidationError
     ) -> JSONResponse:
         request_id = _get_request_id(request)
-        logger.warning("request_validation_failed", errors=exc.errors(), path=request.url.path)
+        cleaned_errors = _clean_validation_errors(exc.errors())
+        logger.warning("request_validation_failed", errors=cleaned_errors, path=request.url.path)
+
+        primary_msg = "Invalid request parameters or payload structure."
+        if cleaned_errors:
+            first_err = cleaned_errors[0]
+            loc_parts = [str(l) for l in first_err.get("loc", []) if l != "body"]
+            loc = " -> ".join(loc_parts)
+            msg = str(first_err.get("msg", ""))
+            if msg.startswith("Value error, "):
+                msg = msg.replace("Value error, ", "", 1)
+            primary_msg = f"{loc}: {msg}" if loc else msg
+
         payload = ErrorResponse(
             error=ErrorDetail(
                 code="VALIDATION_ERROR",
-                message="Invalid request parameters or payload structure.",
-                details={"errors": exc.errors()},
+                message=primary_msg,
+                details={"errors": jsonable_encoder(cleaned_errors)},
                 request_id=request_id,
                 timestamp=datetime.now(UTC),
             )
