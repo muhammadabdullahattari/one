@@ -245,11 +245,14 @@ def require_scope(*scopes: str) -> Callable[[Principal], Principal]:
     return _scope_checker
 
 
-def enforce_project_access(principal: Principal, requested_project_id: str | None) -> None:
-    if requested_project_id is None or principal.is_admin:
+def enforce_tenant_access(principal: Principal, requested_tenant_id: str | None) -> None:
+    if principal.is_admin and (principal.tenant_id is None or principal.tenant_id == "*"):
         return
-    if principal.tenant_id and str(principal.tenant_id) != str(requested_project_id):
+    if not principal.tenant_id or str(principal.tenant_id) != str(requested_tenant_id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Cross-tenant access violation: Principal {principal.principal_id} cannot access project {requested_project_id}.",
+            detail=f"Cross-tenant access violation: Principal '{principal.principal_id}' cannot access tenant '{requested_tenant_id}'.",
         )
+
+
+enforce_project_access = enforce_tenant_access

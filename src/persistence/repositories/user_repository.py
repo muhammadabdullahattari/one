@@ -29,7 +29,12 @@ class UserRepository(BaseRepository[UserModel]):
         return res.scalar_one_or_none()
 
     async def create_user(
-        self, username: str, email: str, password_hash: str, role: str = "operator"
+        self,
+        username: str,
+        email: str,
+        password_hash: str,
+        role: str = "operator",
+        tenant_id: str = "default",
     ) -> UserModel:
         now = datetime.now(UTC)
         user = UserModel(
@@ -38,6 +43,7 @@ class UserRepository(BaseRepository[UserModel]):
             email=email,
             password_hash=password_hash,
             role=role,
+            tenant_id=tenant_id,
             created_at=now,
             updated_at=now,
         )

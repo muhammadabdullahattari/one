@@ -5,7 +5,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.dependencies import get_db_session, get_dlq_repository, get_dlq_service, require_role
+from src.api.dependencies import (
+    enforce_tenant_access,
+    get_current_principal,
+    get_db_session,
+    get_dlq_repository,
+    get_dlq_service,
+    require_role,
+)
 from src.api.schemas.dlq import (
     DLQBulkReplayRequest,
     DLQEntryResponse,
@@ -38,16 +45,29 @@ async def _task_queues(session: AsyncSession, task_ids: list[UUID]) -> dict[UUID
 async def list_dlq(
     dlq_repo: Annotated[DLQRepository, Depends(get_dlq_repository)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
+    principal: Annotated[Principal, Depends(get_current_principal)],
     limit: int = Query(50, ge=1, le=1000, description="Page limit"),
     offset: int = Query(0, ge=0, description="Page offset"),
+    tenant_id: str | None = Query(None, description="Filter by tenant ID"),
 ) -> DLQListResponse:
-    entries = await dlq_repo.list_entries(limit=limit, offset=offset)
-    total = await dlq_repo.count_entries()
+    if principal.tenant_id and not (principal.is_admin and principal.tenant_id is None):
+        if tenant_id and tenant_id != principal.tenant_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Cross-tenant access forbidden: Principal '{principal.principal_id}' cannot access tenant '{tenant_id}'.",
+            )
+        effective_tenant = principal.tenant_id
+    else:
+        effective_tenant = tenant_id
+
+    entries = await dlq_repo.list_entries(limit=limit, offset=offset, tenant_id=effective_tenant)
+    total = await dlq_repo.count_entries(tenant_id=effective_tenant)
     queue_map = await _task_queues(session, [e.task_id for e in entries])
     return DLQListResponse(
         items=[
             DLQEntryResponse(
                 dlq_id=e.dlq_id,
+                tenant_id=e.tenant_id,
                 task_id=e.task_id,
                 final_attempt_id=e.final_attempt_id,
                 queue=queue_map.get(e.task_id, "default"),
@@ -76,15 +96,18 @@ async def get_dlq_entry(
     dlq_id: UUID,
     dlq_repo: Annotated[DLQRepository, Depends(get_dlq_repository)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
+    principal: Annotated[Principal, Depends(get_current_principal)],
 ) -> DLQEntryResponse:
     entry = await dlq_repo.get_by_id(dlq_id)
     if not entry:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"DLQ entry '{dlq_id}' not found."
         )
+    enforce_tenant_access(principal, entry.tenant_id)
     queue = await _task_queue(session, entry.task_id)
     return DLQEntryResponse(
         dlq_id=entry.dlq_id,
+        tenant_id=entry.tenant_id,
         task_id=entry.task_id,
         final_attempt_id=entry.final_attempt_id,
         queue=queue,
@@ -105,9 +128,17 @@ async def get_dlq_entry(
 async def replay_dlq_entry(
     dlq_id: UUID,
     dlq_service: Annotated[DLQService, Depends(get_dlq_service)],
+    dlq_repo: Annotated[DLQRepository, Depends(get_dlq_repository)],
     principal: Annotated[Principal, Depends(require_role("admin", "operator"))],
     request: DLQReplayRequest | None = None,
 ) -> dict[str, str]:
+    entry = await dlq_repo.get_by_id(dlq_id)
+    if not entry:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"DLQ entry '{dlq_id}' not found.",
+        )
+    enforce_tenant_access(principal, entry.tenant_id)
     success = await dlq_service.replay(dlq_id, reset_attempts=True)
     if not success:
         raise HTTPException(
@@ -125,10 +156,16 @@ async def bulk_replay_dlq(
     dlq_service: Annotated[DLQService, Depends(get_dlq_service)],
     principal: Annotated[Principal, Depends(require_role("admin", "operator"))],
 ) -> dict[str, int]:
+    effective_tenant = (
+        principal.tenant_id
+        if (principal.tenant_id and not (principal.is_admin and principal.tenant_id is None))
+        else None
+    )
     replayed_count = await dlq_service.bulk_replay(
         dlq_ids=request.dlq_ids,
         limit=request.max_count,
         reset_attempts=True,
+        tenant_id=effective_tenant,
     )
     return {"replayed_count": replayed_count}
 
@@ -141,8 +178,14 @@ async def bulk_replay_dlq(
 async def discard_dlq_entry(
     dlq_id: UUID,
     dlq_repo: Annotated[DLQRepository, Depends(get_dlq_repository)],
-    principal: Annotated[Principal, Depends(require_role("admin"))],
+    principal: Annotated[Principal, Depends(require_role("admin", "operator"))],
 ) -> None:
+    entry = await dlq_repo.get_by_id(dlq_id)
+    if not entry:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"DLQ entry '{dlq_id}' not found."
+        )
+    enforce_tenant_access(principal, entry.tenant_id)
     deleted = await dlq_repo.delete_entry(dlq_id)
     if not deleted:
         raise HTTPException(

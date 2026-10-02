@@ -33,6 +33,10 @@ class ScheduledJobCreateRequest(BaseModel):
     enabled: bool = Field(
         default=True, description="Whether the schedule is actively generating tasks."
     )
+    tenant_id: str | None = Field(
+        default=None,
+        description="Target tenant ID (restricted to principal's tenant for non-admins).",
+    )
 
     @model_validator(mode="after")
     def validate_recurrence(self) -> ScheduledJobCreateRequest:
@@ -55,6 +59,7 @@ class ScheduledJobUpdateRequest(BaseModel):
 class ScheduledJobResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     schedule_id: UUID = Field(..., description="Unique schedule UUID.")
+    tenant_id: str = Field(default="default", description="Associated tenant ID.")
     task_type: str = Field(..., description="Task handler type to trigger.")
     queue: str = Field(..., description="Target queue name.")
     cron: str | None = Field(None, description="Cron expression if defined.")

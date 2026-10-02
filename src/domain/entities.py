@@ -158,6 +158,7 @@ class Worker(DomainEntity):
 
 class Schedule(DomainEntity):
     schedule_id: UUID = Field(default_factory=uuid4)
+    tenant_id: str = Field(default="default")
     task_type: str
     queue: str = Field(default=DEFAULT_QUEUE_NAME)
     payload: dict[str, Any] | None = Field(default=None)
@@ -186,6 +187,7 @@ class IdempotencyKey(DomainEntity):
 class DLQEntry(DomainEntity):
     dlq_id: UUID = Field(default_factory=uuid4)
     task_id: UUID
+    tenant_id: str = Field(default="default")
     final_attempt_id: UUID | None = Field(default=None)
     reason: str
     error_class: str

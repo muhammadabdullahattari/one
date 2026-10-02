@@ -4,7 +4,13 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from src.api.dependencies import get_schedule_repository, get_task_service, require_role
+from src.api.dependencies import (
+    enforce_tenant_access,
+    get_current_principal,
+    get_schedule_repository,
+    get_task_service,
+    require_role,
+)
 from src.api.schemas.schedules import (
     ScheduledJobCreateRequest,
     ScheduledJobListResponse,
@@ -24,6 +30,7 @@ router = APIRouter(prefix="/schedules", tags=["Schedules"])
 def _to_response(s: Schedule) -> ScheduledJobResponse:
     return ScheduledJobResponse(
         schedule_id=s.schedule_id,
+        tenant_id=s.tenant_id,
         task_type=s.task_type,
         queue=s.queue,
         cron=s.cron_expression,
@@ -45,9 +52,23 @@ def _to_response(s: Schedule) -> ScheduledJobResponse:
 )
 async def list_schedules(
     schedule_repo: Annotated[ScheduleRepository, Depends(get_schedule_repository)],
+    principal: Annotated[Principal, Depends(get_current_principal)],
     enabled_only: bool = Query(False, description="Filter only enabled schedules"),
+    tenant_id: str | None = Query(None, description="Filter by tenant ID"),
 ) -> ScheduledJobListResponse:
-    schedules = await schedule_repo.list_schedules(enabled_only=enabled_only)
+    if principal.tenant_id and not (principal.is_admin and principal.tenant_id is None):
+        if tenant_id and tenant_id != principal.tenant_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Cross-tenant access forbidden: Principal '{principal.principal_id}' cannot access tenant '{tenant_id}'.",
+            )
+        effective_tenant = principal.tenant_id
+    else:
+        effective_tenant = tenant_id
+
+    schedules = await schedule_repo.list_schedules(
+        enabled_only=enabled_only, tenant_id=effective_tenant
+    )
     return ScheduledJobListResponse(
         items=[_to_response(s) for s in schedules],
         total=len(schedules),
@@ -80,8 +101,20 @@ async def create_schedule(
             ) from exc
     elif request.interval_seconds:
         next_run = now + timedelta(seconds=request.interval_seconds)
+
+    if principal.tenant_id and not (principal.is_admin and principal.tenant_id is None):
+        if request.tenant_id and request.tenant_id != principal.tenant_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Cross-tenant schedule creation forbidden: Principal '{principal.principal_id}' cannot create schedule for tenant '{request.tenant_id}'.",
+            )
+        tenant_id = principal.tenant_id
+    else:
+        tenant_id = request.tenant_id or principal.tenant_id or "default"
+
     schedule = Schedule(
         schedule_id=uuid4(),
+        tenant_id=tenant_id,
         task_type=request.task_type,
         queue=request.queue,
         payload=request.payload or None,
@@ -107,12 +140,14 @@ async def create_schedule(
 async def get_schedule(
     schedule_id: UUID,
     schedule_repo: Annotated[ScheduleRepository, Depends(get_schedule_repository)],
+    principal: Annotated[Principal, Depends(get_current_principal)],
 ) -> ScheduledJobResponse:
     schedule = await schedule_repo.get_by_id(schedule_id)
     if not schedule:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"Schedule '{schedule_id}' not found."
         )
+    enforce_tenant_access(principal, schedule.tenant_id)
     return _to_response(schedule)
 
 
@@ -132,6 +167,7 @@ async def update_schedule(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"Schedule '{schedule_id}' not found."
         )
+    enforce_tenant_access(principal, schedule.tenant_id)
     now = datetime.now(UTC)
     cron_val = request.cron if request.cron is not None else schedule.cron_expression
     int_val = (
@@ -151,6 +187,7 @@ async def update_schedule(
         next_run = now + timedelta(seconds=int_val)
     updated_schedule = Schedule(
         schedule_id=schedule_id,
+        tenant_id=schedule.tenant_id,
         task_type=schedule.task_type,
         queue=schedule.queue,
         cron_expression=cron_val,
@@ -174,8 +211,14 @@ async def update_schedule(
 async def delete_schedule(
     schedule_id: UUID,
     schedule_repo: Annotated[ScheduleRepository, Depends(get_schedule_repository)],
-    principal: Annotated[Principal, Depends(require_role("admin"))],
+    principal: Annotated[Principal, Depends(require_role("admin", "operator"))],
 ) -> None:
+    schedule = await schedule_repo.get_by_id(schedule_id)
+    if not schedule:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Schedule '{schedule_id}' not found."
+        )
+    enforce_tenant_access(principal, schedule.tenant_id)
     deleted = await schedule_repo.delete_schedule(schedule_id)
     if not deleted:
         raise HTTPException(
@@ -200,10 +243,12 @@ async def trigger_schedule(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"Schedule '{schedule_id}' not found."
         )
+    enforce_tenant_access(principal, schedule.tenant_id)
     task = await task_service.submit_task(
         task_type=schedule.task_type,
         payload=schedule.payload,
         queue=schedule.queue,
+        tenant_id=schedule.tenant_id,
         schedule_id=schedule.schedule_id,
         metadata={"triggered_by_schedule": str(schedule_id), "manual_trigger": True},
     )

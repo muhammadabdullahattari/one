@@ -404,7 +404,10 @@ class TaskRepository(BaseRepository[TaskModel]):
             tenant_id=model.tenant_id,
             task_type=model.task_type,
             queue=model.queue,
-            status=TaskStatus(model.status),
+            status=TaskStatus(model.status.upper())
+            if isinstance(model.status, str)
+            and model.status.upper() in TaskStatus._value2member_map_
+            else TaskStatus.PENDING,
             priority=model.priority,
             payload=model.payload,
             payload_ref=model.payload_ref,

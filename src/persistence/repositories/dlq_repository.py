@@ -5,15 +5,28 @@ from sqlalchemy import delete, func, select, update
 
 from src.domain.entities import DLQEntry
 from src.persistence.models.dlq import DLQEntryModel
+from src.persistence.models.task import TaskModel
 from src.persistence.repositories.base import BaseRepository
 
 
 class DLQRepository(BaseRepository[DLQEntryModel]):
     async def create_entry(self, dlq_entry: DLQEntry) -> DLQEntry:
         now = datetime.now(UTC)
+        tenant = dlq_entry.tenant_id
+        if not tenant or tenant == "default":
+            task_res = await self.session.execute(
+                select(TaskModel.tenant_id).where(TaskModel.task_id == dlq_entry.task_id)
+            )
+            t_id = task_res.scalar_one_or_none()
+            if t_id:
+                tenant = t_id
+            else:
+                tenant = tenant or "default"
+
         model = DLQEntryModel(
             dlq_id=dlq_entry.dlq_id,
             task_id=dlq_entry.task_id,
+            tenant_id=tenant,
             final_attempt_id=dlq_entry.final_attempt_id,
             reason=dlq_entry.reason,
             error_class=dlq_entry.error_class,
@@ -52,15 +65,20 @@ class DLQRepository(BaseRepository[DLQEntryModel]):
         )
         await self.session.execute(stmt)
 
-    async def list_entries(self, limit: int = 50, offset: int = 0) -> list[DLQEntry]:
-        stmt = (
-            select(DLQEntryModel).order_by(DLQEntryModel.dead_at.desc()).limit(limit).offset(offset)
-        )
+    async def list_entries(
+        self, limit: int = 50, offset: int = 0, tenant_id: str | None = None
+    ) -> list[DLQEntry]:
+        stmt = select(DLQEntryModel)
+        if tenant_id:
+            stmt = stmt.where(DLQEntryModel.tenant_id == tenant_id)
+        stmt = stmt.order_by(DLQEntryModel.dead_at.desc()).limit(limit).offset(offset)
         res = await self.session.execute(stmt)
         return [self._to_entity(m) for m in res.scalars().all()]
 
-    async def count_entries(self) -> int:
+    async def count_entries(self, tenant_id: str | None = None) -> int:
         stmt = select(func.count(DLQEntryModel.dlq_id))
+        if tenant_id:
+            stmt = stmt.where(DLQEntryModel.tenant_id == tenant_id)
         res = await self.session.execute(stmt)
         return int(res.scalar_one() or 0)
 
@@ -74,6 +92,7 @@ class DLQRepository(BaseRepository[DLQEntryModel]):
         return DLQEntry(
             dlq_id=m.dlq_id,
             task_id=m.task_id,
+            tenant_id=getattr(m, "tenant_id", "default"),
             final_attempt_id=m.final_attempt_id,
             reason=m.reason,
             error_class=m.error_class,

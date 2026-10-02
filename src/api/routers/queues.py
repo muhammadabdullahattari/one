@@ -2,7 +2,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from src.api.dependencies import get_queue_repository, get_task_repository, require_role
+from src.api.dependencies import (
+    get_current_principal,
+    get_queue_repository,
+    get_task_repository,
+    require_role,
+)
 from src.api.schemas.queues import (
     QueueCreateRequest,
     QueueDepthResponse,
@@ -190,25 +195,39 @@ async def delete_queue(
     summary="Get real-time queue depth and oldest task age",
 )
 async def get_queue_depth(
-    name: str, queue_repo: Annotated[QueueRepository, Depends(get_queue_repository)]
+    name: str,
+    queue_repo: Annotated[QueueRepository, Depends(get_queue_repository)],
+    principal: Annotated[Principal, Depends(get_current_principal)],
 ) -> QueueDepthResponse:
-    depth, oldest_age = await queue_repo.get_queue_depth_and_age(name)
+    effective_tenant = (
+        principal.tenant_id
+        if (principal.tenant_id and not (principal.is_admin and principal.tenant_id is None))
+        else None
+    )
+    depth, oldest_age = await queue_repo.get_queue_depth_and_age(name, tenant_id=effective_tenant)
     return QueueDepthResponse(queue_name=name, depth=depth, oldest_task_age_seconds=oldest_age)
 
 
 @router.get(
     "/{name}/tasks",
     response_model=TaskListResponse,
-    summary="List tasks currently in a specific queue",
+    summary="List tasks currently in a specific queue (Deprecated: use GET /api/v1/tasks?queue={name})",
+    deprecated=True,
 )
 async def get_queue_tasks(
     name: str,
     task_repo: Annotated[TaskRepository, Depends(get_task_repository)],
+    principal: Annotated[Principal, Depends(get_current_principal)],
     limit: int = Query(50, ge=1, le=1000),
     offset: int = Query(0, ge=0),
 ) -> TaskListResponse:
-    tasks = await task_repo.list_tasks(queue=name, limit=limit, offset=offset)
-    total = await task_repo.count_tasks(queue=name)
+    effective_tenant = (
+        principal.tenant_id
+        if (principal.tenant_id and not (principal.is_admin and principal.tenant_id is None))
+        else None
+    )
+    tasks = await task_repo.list_tasks(queue=name, tenant_id=effective_tenant, limit=limit, offset=offset)
+    total = await task_repo.count_tasks(queue=name, tenant_id=effective_tenant)
     return TaskListResponse(
         items=[TaskResponse.model_validate(t) for t in tasks],
         total=total,

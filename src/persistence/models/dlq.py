@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, Integer, String
+from sqlalchemy import DateTime, Index, Integer, String
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -12,6 +12,9 @@ class DLQEntryModel(Base):
     __tablename__ = "dlq_entries"
     dlq_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
     task_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False, index=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(64), default="default", nullable=False, index=True
+    )
     final_attempt_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
     reason: Mapped[str] = mapped_column(String(512), nullable=False)
     error_class: Mapped[str] = mapped_column(String(256), nullable=False)
@@ -21,3 +24,4 @@ class DLQEntryModel(Base):
     last_replayed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    __table_args__ = (Index("ix_dlq_tenant_dead", "tenant_id", "dead_at"),)

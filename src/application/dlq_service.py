@@ -73,7 +73,11 @@ class DLQService:
             return True
 
     async def bulk_replay(
-        self, dlq_ids: list[UUID] | None = None, limit: int = 50, reset_attempts: bool = True
+        self,
+        dlq_ids: list[UUID] | None = None,
+        limit: int = 50,
+        reset_attempts: bool = True,
+        tenant_id: str | None = None,
     ) -> int:
         from sqlalchemy import select
 
@@ -84,10 +88,10 @@ class DLQService:
                 entries: list[DLQEntry] = []
                 for did in dlq_ids:
                     e = await dlq_repo.get_by_id(did)
-                    if e:
+                    if e and (tenant_id is None or e.tenant_id == tenant_id):
                         entries.append(e)
             else:
-                entries = await dlq_repo.list_entries(limit=limit)
+                entries = await dlq_repo.list_entries(limit=limit, tenant_id=tenant_id)
 
             if not entries:
                 return 0

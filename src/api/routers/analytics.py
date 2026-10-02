@@ -5,7 +5,11 @@ from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.dependencies import get_queue_repository, get_worker_repository
+from src.api.dependencies import (
+    get_current_principal,
+    get_queue_repository,
+    get_worker_repository,
+)
 from src.api.schemas.analytics import (
     BrokerHealthItem,
     BrokerStatsResponse,
@@ -32,6 +36,7 @@ from src.persistence.models.task_attempt import TaskAttemptModel
 from src.persistence.repositories.queue_repository import QueueRepository
 from src.persistence.repositories.worker_repository import WorkerRepository
 from src.persistence.session import get_db_session
+from src.security.principal import Principal
 
 router = APIRouter(tags=["Analytics & Observability"])
 
@@ -43,6 +48,7 @@ router = APIRouter(tags=["Analytics & Observability"])
 )
 async def get_throughput(
     session: Annotated[AsyncSession, Depends(get_db_session)],
+    principal: Annotated[Principal, Depends(get_current_principal)],
     hours: int = Query(24, ge=1, le=168, description="Time range in hours"),
 ) -> ThroughputResponse:
     now = datetime.now(UTC)
@@ -57,6 +63,8 @@ async def get_throughput(
         )
         .label("total_completed"),
     ).where(TaskModel.created_at >= cutoff)
+    if principal.tenant_id and not (principal.is_admin and principal.tenant_id is None):
+        stmt = stmt.where(TaskModel.tenant_id == principal.tenant_id)
     res = await session.execute(stmt)
     row = res.one()
     total_in = int(row.total_created or 0)
@@ -80,11 +88,14 @@ async def get_throughput(
 )
 async def get_status_distribution(
     session: Annotated[AsyncSession, Depends(get_db_session)],
+    principal: Annotated[Principal, Depends(get_current_principal)],
     queue: str | None = Query(None, description="Optional queue filter"),
 ) -> StatusDistributionResponse:
     stmt = select(TaskModel.status, func.count(TaskModel.task_id))
     if queue:
         stmt = stmt.where(TaskModel.queue == queue)
+    if principal.tenant_id and not (principal.is_admin and principal.tenant_id is None):
+        stmt = stmt.where(TaskModel.tenant_id == principal.tenant_id)
     stmt = stmt.group_by(TaskModel.status)
     res = await session.execute(stmt)
     rows = res.all()
@@ -107,6 +118,7 @@ async def get_status_distribution(
 )
 async def get_latency(
     session: Annotated[AsyncSession, Depends(get_db_session)],
+    principal: Annotated[Principal, Depends(get_current_principal)],
     queue: str | None = Query(None, description="Optional queue filter"),
 ) -> LatencyResponse:
     exec_ms = (
@@ -139,6 +151,9 @@ async def get_latency(
     if queue:
         exec_stmt = exec_stmt.where(TaskModel.queue == queue)
         wait_stmt = wait_stmt.where(TaskModel.queue == queue)
+    if principal.tenant_id and not (principal.is_admin and principal.tenant_id is None):
+        exec_stmt = exec_stmt.where(TaskModel.tenant_id == principal.tenant_id)
+        wait_stmt = wait_stmt.where(TaskModel.tenant_id == principal.tenant_id)
 
     exec_row = (await session.execute(exec_stmt)).one()
     wait_row = (await session.execute(wait_stmt)).one()
@@ -207,8 +222,9 @@ async def get_worker_utilization(
 )
 async def get_task_type_stats(
     session: Annotated[AsyncSession, Depends(get_db_session)],
+    principal: Annotated[Principal, Depends(get_current_principal)],
 ) -> TaskTypeStatsResponse:
-    durations_res = await session.execute(
+    durations_stmt = (
         select(
             TaskModel.task_type,
             func.avg(
@@ -219,10 +235,7 @@ async def get_task_type_stats(
         .select_from(TaskAttemptModel)
         .join(TaskModel, TaskAttemptModel.task_id == TaskModel.task_id)
         .where(TaskAttemptModel.finished_at.isnot(None))
-        .group_by(TaskModel.task_type)
     )
-    avg_map = {str(row[0]): float(row[1]) for row in durations_res.all() if row[1] is not None}
-
     stmt = select(
         TaskModel.task_type,
         func.count(TaskModel.task_id).label("total"),
@@ -232,7 +245,16 @@ async def get_task_type_stats(
         func.count(TaskModel.task_id)
         .filter(TaskModel.status.in_([TaskStatus.FAILED.value, TaskStatus.DEAD.value]))
         .label("failed"),
-    ).group_by(TaskModel.task_type)
+    )
+    if principal.tenant_id and not (principal.is_admin and principal.tenant_id is None):
+        durations_stmt = durations_stmt.where(TaskModel.tenant_id == principal.tenant_id)
+        stmt = stmt.where(TaskModel.tenant_id == principal.tenant_id)
+
+    durations_stmt = durations_stmt.group_by(TaskModel.task_type)
+    durations_res = await session.execute(durations_stmt)
+    avg_map = {str(row[0]): float(row[1]) for row in durations_res.all() if row[1] is not None}
+
+    stmt = stmt.group_by(TaskModel.task_type)
     res = await session.execute(stmt)
     rows = res.all()
     stats = [
@@ -258,9 +280,15 @@ async def get_task_type_stats(
 )
 async def get_queue_depth_trend(
     queue_repo: Annotated[QueueRepository, Depends(get_queue_repository)],
+    principal: Annotated[Principal, Depends(get_current_principal)],
 ) -> QueueDepthTrendResponse:
     now = datetime.now(UTC)
-    summary = await queue_repo.get_queue_backlog_summary()
+    effective_tenant = (
+        principal.tenant_id
+        if (principal.tenant_id and not (principal.is_admin and principal.tenant_id is None))
+        else None
+    )
+    summary = await queue_repo.get_queue_backlog_summary(tenant_id=effective_tenant)
     points = [
         QueueDepthPoint(
             queue_name=q_name,
@@ -281,6 +309,7 @@ async def get_queue_depth_trend(
 async def get_oldest_task_age_report(
     queue_repo: Annotated[QueueRepository, Depends(get_queue_repository)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
+    principal: Annotated[Principal, Depends(get_current_principal)],
 ) -> OldestTaskAgeResponse:
     queues = await queue_repo.list_queues()
     oldest_stmt = (
@@ -290,9 +319,10 @@ async def get_oldest_task_age_report(
                 [TaskStatus.PENDING.value, TaskStatus.QUEUED.value, TaskStatus.RETRY_WAIT.value]
             )
         )
-        .distinct(TaskModel.queue)
-        .order_by(TaskModel.queue, TaskModel.created_at.asc())
     )
+    if principal.tenant_id and not (principal.is_admin and principal.tenant_id is None):
+        oldest_stmt = oldest_stmt.where(TaskModel.tenant_id == principal.tenant_id)
+    oldest_stmt = oldest_stmt.distinct(TaskModel.queue).order_by(TaskModel.queue, TaskModel.created_at.asc())
     res = await session.execute(oldest_stmt)
     oldest_by_queue = {row.queue: (row.task_id, row.created_at) for row in res.all()}
     now = datetime.now(UTC)
@@ -342,7 +372,9 @@ async def list_broker_backends() -> list[BrokerHealthItem]:
     summary="Get separate load metrics for native vs Redis broker adapters",
 )
 async def get_broker_stats(
-    backend: str, session: Annotated[AsyncSession, Depends(get_db_session)]
+    backend: str,
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    principal: Annotated[Principal, Depends(get_current_principal)],
 ) -> BrokerStatsResponse:
     stmt = select(
         func.count(TaskModel.task_id).label("total"),
@@ -353,6 +385,8 @@ async def get_broker_stats(
         .filter(TaskModel.status == TaskStatus.DEAD.value)
         .label("dead"),
     )
+    if principal.tenant_id and not (principal.is_admin and principal.tenant_id is None):
+        stmt = stmt.where(TaskModel.tenant_id == principal.tenant_id)
     res = await session.execute(stmt)
     row = res.one()
     return BrokerStatsResponse(

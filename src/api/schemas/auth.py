@@ -30,6 +30,12 @@ class UserCreateRequest(BaseModel):
         description="Assigned RBAC role: 'admin', 'operator', or 'viewer'.",
         examples=["operator"],
     )
+    tenant_id: str = Field(
+        default="default",
+        max_length=64,
+        description="Assigned tenant or project identifier.",
+        examples=["default", "project-alpha"],
+    )
 
     @field_validator("password")
     @classmethod
@@ -73,6 +79,7 @@ class TokenResponse(BaseModel):
     refresh_token: str | None = Field(default=None, description="Signed JWT refresh token.")
     user_id: str = Field(..., description="Authenticated user ID.")
     role: str = Field(..., description="Authenticated role.")
+    tenant_id: str | None = Field(default="default", description="Associated tenant scope.")
 
 
 class UserResponse(BaseModel):
@@ -81,6 +88,7 @@ class UserResponse(BaseModel):
     username: str = Field(..., description="Username.")
     email: str = Field(..., description="Email address.")
     role: str = Field(..., description="Role.")
+    tenant_id: str = Field(default="default", description="Tenant scope.")
     created_at: datetime = Field(..., description="Registration timestamp.")
 
 

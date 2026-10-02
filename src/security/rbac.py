@@ -9,12 +9,15 @@ ALLOWED_ROLES = {"admin", "developer", "viewer", "worker"}
 
 def check_project_access(principal: Principal, target_project_id: str | None) -> bool:
     if not target_project_id:
+        return False
+    if principal.is_admin and (principal.project_id is None or principal.project_id == "*"):
         return True
-    if principal.is_admin:
-        return True
-    if principal.project_id is None or principal.project_id == "*":
-        return True
+    if not principal.project_id:
+        return False
     return str(principal.project_id) == str(target_project_id)
+
+
+check_tenant_access = check_project_access
 
 
 def enforce_project_access(principal: Principal, target_project_id: str | None) -> None:
@@ -24,10 +27,13 @@ def enforce_project_access(principal: Principal, target_project_id: str | None) 
             detail={
                 "error": {
                     "code": "FORBIDDEN",
-                    "message": f"Cross-tenant access forbidden: principal does not have access to project '{target_project_id}'",
+                    "message": f"Cross-tenant access forbidden: principal does not have access to tenant '{target_project_id}'",
                 }
             },
         )
+
+
+enforce_tenant_access = enforce_project_access
 
 
 def enforce_role(principal: Principal, allowed_roles: tuple[str, ...]) -> None:

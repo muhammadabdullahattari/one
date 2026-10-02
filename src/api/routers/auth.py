@@ -65,12 +65,14 @@ async def register_user(
         email=request.email,
         password_hash=hash_password(request.password),
         role=request.role,
+        tenant_id=request.tenant_id,
     )
     return UserResponse(
         user_id=str(user.user_id),
         username=user.username,
         email=user.email,
         role=user.role,
+        tenant_id=user.tenant_id,
         created_at=user.created_at,
     )
 
@@ -98,13 +100,14 @@ async def login(
             detail="Invalid username or password.",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    user_tenant = getattr(user, "tenant_id", "default") or "default"
     access_tok = create_access_token(
         subject=str(user.user_id),
-        claims={"role": user.role, "username": user.username},
+        claims={"role": user.role, "username": user.username, "tenant_id": user_tenant},
     )
     refresh_tok = create_refresh_token(
         subject=str(user.user_id),
-        claims={"role": user.role, "username": user.username},
+        claims={"role": user.role, "username": user.username, "tenant_id": user_tenant},
     )
 
     refresh_token_hash = hashlib.sha256(refresh_tok.encode()).hexdigest()
@@ -132,6 +135,7 @@ async def login(
         refresh_token=refresh_tok,
         user_id=str(user.user_id),
         role=user.role,
+        tenant_id=user_tenant,
     )
 
 
@@ -175,9 +179,10 @@ async def refresh_token(
 
     user_id = payload.get("sub", "unknown")
     role = payload.get("role", "viewer")
+    tenant_id = payload.get("tenant_id", "default")
     new_access_tok = create_access_token(
         subject=user_id,
-        claims={"role": role},
+        claims={"role": role, "tenant_id": tenant_id},
     )
 
     CookieManager.set_access_token_cookie(response, new_access_tok, settings)
@@ -190,6 +195,7 @@ async def refresh_token(
         refresh_token=tok,
         user_id=user_id,
         role=role,
+        tenant_id=tenant_id,
     )
 
 

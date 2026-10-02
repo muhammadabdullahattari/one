@@ -61,6 +61,8 @@ class TaskModel(Base, TimestampMixin):
     __table_args__ = (
         Index("ix_tasks_claim", "queue", "status", "priority", "created_at"),
         Index("ix_tasks_tenant_idempotency", "tenant_id", "idempotency_key"),
+        Index("ix_tasks_tenant_queue_status_created", "tenant_id", "queue", "status", "created_at"),
+        Index("ix_tasks_tenant_status_created", "tenant_id", "status", "created_at"),
         Index(
             "ix_tasks_pending_hotpath",
             "queue",

@@ -28,6 +28,7 @@ class DLQBulkReplayRequest(BaseModel):
 class DLQEntryResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     dlq_id: UUID = Field(..., description="Unique DLQ record identifier.")
+    tenant_id: str = Field(default="default", description="Associated tenant ID.")
     task_id: UUID = Field(..., description="Underlying dead task UUID.")
     final_attempt_id: UUID | None = Field(None, description="Final failed attempt UUID.")
     queue: str = Field(..., description="Original queue name.")

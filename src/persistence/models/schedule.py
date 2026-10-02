@@ -15,6 +15,9 @@ class ScheduleModel(Base, TimestampMixin):
     schedule_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True), primary_key=True, default=uuid4
     )
+    tenant_id: Mapped[str] = mapped_column(
+        String(64), default="default", nullable=False, index=True
+    )
     task_type: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     queue: Mapped[str] = mapped_column(String(128), default="default", nullable=False)
     payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
@@ -29,4 +32,7 @@ class ScheduleModel(Base, TimestampMixin):
     )
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
-    __table_args__ = (Index("ix_schedules_due", "enabled", "next_run_at"),)
+    __table_args__ = (
+        Index("ix_schedules_due", "enabled", "next_run_at"),
+        Index("ix_schedules_tenant_due", "tenant_id", "enabled", "next_run_at"),
+    )

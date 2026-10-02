@@ -74,17 +74,21 @@ class QueueRepository(BaseRepository[QueueModel]):
         res = await self.session.execute(stmt)
         return [self._to_entity(m) for m in res.scalars().all()]
 
-    async def get_queue_depth(self, queue_name: str) -> int:
+    async def get_queue_depth(self, queue_name: str, tenant_id: str | None = None) -> int:
         stmt = select(func.count(TaskModel.task_id)).where(
             TaskModel.queue == queue_name,
             TaskModel.status.in_(
                 [TaskStatus.PENDING.value, TaskStatus.QUEUED.value, TaskStatus.RETRY_WAIT.value]
             ),
         )
+        if tenant_id:
+            stmt = stmt.where(TaskModel.tenant_id == tenant_id)
         res = await self.session.execute(stmt)
         return int(res.scalar_one() or 0)
 
-    async def get_queue_depth_and_age(self, queue_name: str) -> tuple[int, float | None]:
+    async def get_queue_depth_and_age(
+        self, queue_name: str, tenant_id: str | None = None
+    ) -> tuple[int, float | None]:
         now = datetime.now(UTC)
         stmt = select(
             func.count(TaskModel.task_id),
@@ -95,6 +99,8 @@ class QueueRepository(BaseRepository[QueueModel]):
                 [TaskStatus.PENDING.value, TaskStatus.QUEUED.value, TaskStatus.RETRY_WAIT.value]
             ),
         )
+        if tenant_id:
+            stmt = stmt.where(TaskModel.tenant_id == tenant_id)
         res = await self.session.execute(stmt)
         row = res.one()
         depth = int(row[0] or 0)
@@ -106,27 +112,29 @@ class QueueRepository(BaseRepository[QueueModel]):
             oldest_age = max(0.0, round((now - oldest_created).total_seconds(), 3))
         return depth, oldest_age
 
-    async def get_queue_backlog_summary(self) -> list[tuple[str, int, float | None]]:
+    async def get_queue_backlog_summary(
+        self, tenant_id: str | None = None
+    ) -> list[tuple[str, int, float | None]]:
         now = datetime.now(UTC)
+        join_cond = (TaskModel.queue == QueueModel.queue_name) & (
+            TaskModel.status.in_(
+                [
+                    TaskStatus.PENDING.value,
+                    TaskStatus.QUEUED.value,
+                    TaskStatus.RETRY_WAIT.value,
+                ]
+            )
+        )
+        if tenant_id:
+            join_cond = join_cond & (TaskModel.tenant_id == tenant_id)
+
         stmt = (
             select(
                 QueueModel.queue_name,
                 func.count(TaskModel.task_id).label("depth"),
                 func.min(TaskModel.created_at).label("oldest_created_at"),
             )
-            .outerjoin(
-                TaskModel,
-                (TaskModel.queue == QueueModel.queue_name)
-                & (
-                    TaskModel.status.in_(
-                        [
-                            TaskStatus.PENDING.value,
-                            TaskStatus.QUEUED.value,
-                            TaskStatus.RETRY_WAIT.value,
-                        ]
-                    )
-                ),
-            )
+            .outerjoin(TaskModel, join_cond)
             .group_by(QueueModel.queue_name)
             .order_by(QueueModel.queue_name.asc())
         )

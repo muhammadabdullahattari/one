@@ -14,6 +14,7 @@ class ScheduleRepository(BaseRepository[ScheduleModel]):
         now = datetime.now(UTC)
         model = ScheduleModel(
             schedule_id=schedule.schedule_id,
+            tenant_id=schedule.tenant_id,
             task_type=schedule.task_type,
             queue=schedule.queue,
             payload=schedule.payload,
@@ -75,10 +76,14 @@ class ScheduleRepository(BaseRepository[ScheduleModel]):
         acquired = bool(result.scalar_one())
         return acquired
 
-    async def list_schedules(self, enabled_only: bool = False) -> list[Schedule]:
+    async def list_schedules(
+        self, enabled_only: bool = False, tenant_id: str | None = None
+    ) -> list[Schedule]:
         stmt = select(ScheduleModel)
         if enabled_only:
             stmt = stmt.where(ScheduleModel.enabled.is_(True))
+        if tenant_id:
+            stmt = stmt.where(ScheduleModel.tenant_id == tenant_id)
         stmt = stmt.order_by(ScheduleModel.created_at.desc())
         res = await self.session.execute(stmt)
         return [self._to_entity(m) for m in res.scalars().all()]
@@ -117,6 +122,7 @@ class ScheduleRepository(BaseRepository[ScheduleModel]):
     def _to_entity(self, m: ScheduleModel) -> Schedule:
         return Schedule(
             schedule_id=m.schedule_id,
+            tenant_id=getattr(m, "tenant_id", "default"),
             task_type=m.task_type,
             queue=m.queue,
             payload=m.payload,
