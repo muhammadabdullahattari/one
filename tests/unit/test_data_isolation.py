@@ -6,9 +6,10 @@ from httpx import ASGITransport, AsyncClient
 
 from src.api.main import create_app
 from src.core.constants import TaskStatus
-from src.domain.entities import DLQEntry, Task
+from src.domain.entities import DLQEntry, Task, Worker
 from src.persistence.models.task import TaskModel
 from src.persistence.repositories.dlq_repository import DLQRepository
+from src.persistence.repositories.worker_repository import WorkerRepository
 from src.persistence.session import session_scope
 from src.security.jwt import create_access_token
 
@@ -328,3 +329,180 @@ async def test_analytics_and_queue_depth_tenant_isolation(
         depth_a = await client.get("/api/v1/queues/default/depth", headers=headers_a)
         assert depth_a.status_code == 200
         assert depth_a.json()["queue_name"] == "default"
+
+
+@pytest.mark.asyncio
+async def test_queue_tenant_isolation(
+    app, token_tenant_a: str, token_tenant_b: str, token_admin: str
+) -> None:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        headers_a = {"Authorization": f"Bearer {token_tenant_a}"}
+        headers_b = {"Authorization": f"Bearer {token_tenant_b}"}
+        headers_admin = {"Authorization": f"Bearer {token_admin}"}
+
+        q_a_name = f"queue-alpha-{uuid4().hex[:6]}"
+        q_b_name = f"queue-beta-{uuid4().hex[:6]}"
+
+        # 1. Tenant A creates queue A
+        res_a = await client.post(
+            "/api/v1/queues",
+            json={"queue_name": q_a_name, "default_priority": 5},
+            headers=headers_a,
+        )
+        assert res_a.status_code == 201
+        assert res_a.json()["tenant_id"] == "tenant-alpha"
+
+        # 2. Tenant B creates queue B
+        res_b = await client.post(
+            "/api/v1/queues",
+            json={"queue_name": q_b_name, "default_priority": 3},
+            headers=headers_b,
+        )
+        assert res_b.status_code == 201
+        assert res_b.json()["tenant_id"] == "tenant-beta"
+
+        # 3. Tenant A lists queues -> sees queue A, does NOT see queue B
+        list_a = await client.get("/api/v1/queues", headers=headers_a)
+        assert list_a.status_code == 200
+        q_names_a = [q["queue_name"] for q in list_a.json()["items"]]
+        assert q_a_name in q_names_a
+        assert q_b_name not in q_names_a
+
+        # 4. Tenant B lists queues -> sees queue B, does NOT see queue A
+        list_b = await client.get("/api/v1/queues", headers=headers_b)
+        assert list_b.status_code == 200
+        q_names_b = [q["queue_name"] for q in list_b.json()["items"]]
+        assert q_b_name in q_names_b
+        assert q_a_name not in q_names_b
+
+        # 5. Tenant A tries to GET Tenant B's queue -> 404 Not Found
+        get_b = await client.get(f"/api/v1/queues/{q_b_name}", headers=headers_a)
+        assert get_b.status_code == 404
+
+        # 6. Tenant A tries to PUT Tenant B's queue -> 404 Not Found
+        put_b = await client.put(
+            f"/api/v1/queues/{q_b_name}", json={"max_concurrency": 10}, headers=headers_a
+        )
+        assert put_b.status_code == 404
+
+        # 7. Tenant A tries to DELETE Tenant B's queue -> 403 or 404
+        del_b = await client.delete(f"/api/v1/queues/{q_b_name}", headers=headers_a)
+        assert del_b.status_code in (403, 404)
+
+        # 8. Admin lists queues -> can see both
+        list_admin = await client.get("/api/v1/queues", headers=headers_admin)
+        assert list_admin.status_code == 200
+        admin_names = [q["queue_name"] for q in list_admin.json()["items"]]
+        assert q_a_name in admin_names
+        assert q_b_name in admin_names
+
+
+@pytest.mark.asyncio
+async def test_worker_tenant_isolation(
+    app, token_tenant_a: str, token_tenant_b: str, token_admin: str
+) -> None:
+    worker_a_id = f"worker-a-{uuid4().hex[:6]}"
+    worker_b_id = f"worker-b-{uuid4().hex[:6]}"
+
+    async with session_scope() as session:
+        worker_repo = WorkerRepository(session)
+        await worker_repo.register_worker(
+            Worker(
+                worker_id=worker_a_id,
+                tenant_id="tenant-alpha",
+                hostname="host-a",
+                process_id=1001,
+            )
+        )
+        await worker_repo.register_worker(
+            Worker(
+                worker_id=worker_b_id,
+                tenant_id="tenant-beta",
+                hostname="host-b",
+                process_id=1002,
+            )
+        )
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        headers_a = {"Authorization": f"Bearer {token_tenant_a}"}
+        headers_b = {"Authorization": f"Bearer {token_tenant_b}"}
+        headers_admin = {"Authorization": f"Bearer {token_admin}"}
+
+        # 1. Tenant A lists workers -> sees Worker A, does NOT see Worker B
+        list_a = await client.get("/api/v1/workers", headers=headers_a)
+        assert list_a.status_code == 200
+        w_ids_a = [w["worker_id"] for w in list_a.json()["items"]]
+        assert worker_a_id in w_ids_a
+        assert worker_b_id not in w_ids_a
+
+        # 2. Tenant B lists workers -> sees Worker B, does NOT see Worker A
+        list_b = await client.get("/api/v1/workers", headers=headers_b)
+        assert list_b.status_code == 200
+        w_ids_b = [w["worker_id"] for w in list_b.json()["items"]]
+        assert worker_b_id in w_ids_b
+        assert worker_a_id not in w_ids_b
+
+        # 3. Tenant A tries to GET Worker B -> 404
+        get_b = await client.get(f"/api/v1/workers/{worker_b_id}", headers=headers_a)
+        assert get_b.status_code == 404
+
+        # 4. Tenant A tries to drain Worker B -> 404
+        drain_b = await client.post(f"/api/v1/workers/{worker_b_id}/drain", headers=headers_a)
+        assert drain_b.status_code == 404
+
+        # 5. Superadmin can list all workers
+        list_admin = await client.get("/api/v1/workers", headers=headers_admin)
+        assert list_admin.status_code == 200
+        admin_w_ids = [w["worker_id"] for w in list_admin.json()["items"]]
+        assert worker_a_id in admin_w_ids
+        assert worker_b_id in admin_w_ids
+
+
+@pytest.mark.asyncio
+async def test_registration_auto_assigns_isolated_tenant(app) -> None:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        username = f"user_{uuid4().hex[:8]}"
+        reg_res = await client.post(
+            "/api/v1/auth/register",
+            json={
+                "username": username,
+                "email": f"{username}@example.com",
+                "password": "Password123!",
+                "role": "operator",
+            },
+        )
+        assert reg_res.status_code == 201
+        data = reg_res.json()
+        assert data["tenant_id"] == username.lower()
+        assert data["tenant_id"] != "default"
+
+        # Log in and check profile tenant_id
+        login_res = await client.post(
+            "/api/v1/auth/login",
+            json={"username": username, "password": "Password123!"},
+        )
+        assert login_res.status_code == 200
+        token = login_res.json()["access_token"]
+        assert login_res.json()["tenant_id"] == username.lower()
+
+        headers = {"Authorization": f"Bearer {token}"}
+        me_res = await client.get("/api/v1/auth/me", headers=headers)
+        assert me_res.status_code == 200
+        assert me_res.json()["tenant_id"] == username.lower()
+
+        # Listing queues/tasks/workers for this new user returns only their isolated scope
+        tasks_res = await client.get("/api/v1/tasks", headers=headers)
+        assert tasks_res.status_code == 200
+        assert len(tasks_res.json()["items"]) == 0
+
+        queues_res = await client.get("/api/v1/queues", headers=headers)
+        assert queues_res.status_code == 200
+        assert len(queues_res.json()["items"]) == 0
+
+        workers_res = await client.get("/api/v1/workers", headers=headers)
+        assert workers_res.status_code == 200
+        assert len(workers_res.json()["items"]) == 0
+

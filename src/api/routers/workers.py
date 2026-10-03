@@ -2,15 +2,23 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from src.api.dependencies import get_worker_repository, require_role
+from src.api.dependencies import get_current_principal, get_worker_repository, require_role
 from src.api.schemas.workers import WorkerListResponse, WorkerResponse
+from src.domain.entities import Worker
 from src.persistence.repositories.worker_repository import WorkerRepository
 from src.security.principal import Principal
 
 router = APIRouter(prefix="/workers", tags=["Workers"])
 
 
-def _to_response(w) -> WorkerResponse:
+def _effective_tenant(principal: Principal) -> str | None:
+    """Return the tenant_id that must be used for isolation."""
+    if principal.tenant_id and not (principal.is_admin and principal.tenant_id is None):
+        return principal.tenant_id
+    return None
+
+
+def _to_response(w: Worker) -> WorkerResponse:
     queues = w.queues_json if isinstance(w.queues_json, list) else []
     caps = (
         {"capabilities": w.capabilities_json}
@@ -19,6 +27,7 @@ def _to_response(w) -> WorkerResponse:
     )
     return WorkerResponse(
         worker_id=w.worker_id,
+        tenant_id=w.tenant_id,
         hostname=w.hostname,
         process_id=w.process_id,
         version=w.version,
@@ -36,11 +45,13 @@ def _to_response(w) -> WorkerResponse:
 @router.get("", response_model=WorkerListResponse, summary="List all registered worker nodes")
 async def list_workers(
     worker_repo: Annotated[WorkerRepository, Depends(get_worker_repository)],
+    principal: Annotated[Principal, Depends(get_current_principal)],
     status_filter: str | None = Query(
         None, alias="status", description="Filter by status (active, draining, offline)"
     ),
 ) -> WorkerListResponse:
-    workers = await worker_repo.list_workers(status=status_filter)
+    tenant = _effective_tenant(principal)
+    workers = await worker_repo.list_workers(status=status_filter, tenant_id=tenant)
     return WorkerListResponse(
         items=[_to_response(w) for w in workers],
         total=len(workers),
@@ -54,10 +65,18 @@ async def list_workers(
     "/{worker_id}", response_model=WorkerResponse, summary="Get details for a specific worker node"
 )
 async def get_worker(
-    worker_id: str, worker_repo: Annotated[WorkerRepository, Depends(get_worker_repository)]
+    worker_id: str,
+    worker_repo: Annotated[WorkerRepository, Depends(get_worker_repository)],
+    principal: Annotated[Principal, Depends(get_current_principal)],
 ) -> WorkerResponse:
     worker = await worker_repo.get_by_id(worker_id)
     if not worker:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Worker '{worker_id}' not found."
+        )
+    # Enforce cross-tenant protection: a non-admin can only view their own tenant's workers
+    tenant = _effective_tenant(principal)
+    if tenant and worker.tenant_id != tenant:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"Worker '{worker_id}' not found."
         )
@@ -79,6 +98,11 @@ async def drain_worker(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"Worker '{worker_id}' not found."
         )
+    tenant = _effective_tenant(principal)
+    if tenant and worker.tenant_id != tenant:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Worker '{worker_id}' not found."
+        )
     await worker_repo.set_draining(worker_id)
     updated = await worker_repo.get_by_id(worker_id)
     return _to_response(updated or worker)
@@ -94,6 +118,16 @@ async def deregister_worker(
     worker_repo: Annotated[WorkerRepository, Depends(get_worker_repository)],
     principal: Annotated[Principal, Depends(require_role("admin"))],
 ) -> None:
+    worker = await worker_repo.get_by_id(worker_id)
+    if not worker:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Worker '{worker_id}' not found."
+        )
+    tenant = _effective_tenant(principal)
+    if tenant and worker.tenant_id != tenant:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Worker '{worker_id}' not found."
+        )
     deleted = await worker_repo.delete_worker(worker_id)
     if not deleted:
         raise HTTPException(

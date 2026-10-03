@@ -21,11 +21,13 @@ class WorkerRepository(BaseRepository[WorkerModel]):
             existing.capabilities_json = worker.capabilities_json
             existing.queues_json = worker.queues_json
             existing.concurrency = worker.concurrency
+            existing.tenant_id = worker.tenant_id
             existing.status = "active"
             existing.last_heartbeat = now
         else:
             model = WorkerModel(
                 worker_id=worker.worker_id,
+                tenant_id=worker.tenant_id,
                 hostname=worker.hostname,
                 process_id=worker.process_id,
                 version=worker.version,
@@ -60,30 +62,17 @@ class WorkerRepository(BaseRepository[WorkerModel]):
         )
         await self.session.execute(stmt)
 
-    async def list_workers(self, status: str | None = None) -> list[Worker]:
+    async def list_workers(
+        self, status: str | None = None, tenant_id: str | None = None
+    ) -> list[Worker]:
         stmt = select(WorkerModel)
         if status:
             stmt = stmt.where(WorkerModel.status == status)
+        if tenant_id:
+            stmt = stmt.where(WorkerModel.tenant_id == tenant_id)
         stmt = stmt.order_by(WorkerModel.last_heartbeat.desc())
         res = await self.session.execute(stmt)
-        return [
-            Worker(
-                worker_id=m.worker_id,
-                hostname=m.hostname,
-                process_id=m.process_id,
-                version=m.version,
-                protocol_version=m.protocol_version,
-                capabilities_json=m.capabilities_json,
-                queues_json=m.queues_json,
-                concurrency=m.concurrency,
-                active_slots=m.active_slots,
-                status=m.status,
-                last_heartbeat=m.last_heartbeat,
-                registered_at=m.registered_at,
-                drained_at=m.drained_at,
-            )
-            for m in res.scalars().all()
-        ]
+        return [self._to_worker(m) for m in res.scalars().all()]
 
     async def get_by_id(self, worker_id: str) -> Worker | None:
         stmt = select(WorkerModel).where(WorkerModel.worker_id == worker_id)
@@ -91,8 +80,20 @@ class WorkerRepository(BaseRepository[WorkerModel]):
         m = res.scalar_one_or_none()
         if not m:
             return None
+        return self._to_worker(m)
+
+    async def delete_worker(self, worker_id: str) -> bool:
+        from sqlalchemy import delete
+
+        stmt = delete(WorkerModel).where(WorkerModel.worker_id == worker_id)
+        res = await self.session.execute(stmt)
+        rowcount = getattr(res, "rowcount", 0)
+        return bool(rowcount and rowcount > 0)
+
+    def _to_worker(self, m: WorkerModel) -> Worker:
         return Worker(
             worker_id=m.worker_id,
+            tenant_id=m.tenant_id,
             hostname=m.hostname,
             process_id=m.process_id,
             version=m.version,
@@ -106,11 +107,3 @@ class WorkerRepository(BaseRepository[WorkerModel]):
             registered_at=m.registered_at,
             drained_at=m.drained_at,
         )
-
-    async def delete_worker(self, worker_id: str) -> bool:
-        from sqlalchemy import delete
-
-        stmt = delete(WorkerModel).where(WorkerModel.worker_id == worker_id)
-        res = await self.session.execute(stmt)
-        rowcount = getattr(res, "rowcount", 0)
-        return bool(rowcount and rowcount > 0)

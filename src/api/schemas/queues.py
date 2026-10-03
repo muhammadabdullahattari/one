@@ -65,6 +65,7 @@ class QueueUpdateRequest(BaseModel):
 class QueueResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     queue_name: str = Field(..., description="Unique queue name.")
+    tenant_id: str = Field(default="default", description="Owning tenant identifier.")
     enabled: bool = Field(..., description="Active status.")
     default_priority: int = Field(..., description="Default priority.")
     max_concurrency: int = Field(..., description="Concurrency ceiling.")

@@ -10,8 +10,10 @@ from src.persistence.repositories.base import BaseRepository
 
 
 class QueueRepository(BaseRepository[QueueModel]):
-    async def get_by_name(self, queue_name: str) -> Queue | None:
+    async def get_by_name(self, queue_name: str, tenant_id: str | None = None) -> Queue | None:
         stmt = select(QueueModel).where(QueueModel.queue_name == queue_name)
+        if tenant_id:
+            stmt = stmt.where(QueueModel.tenant_id == tenant_id)
         res = await self.session.execute(stmt)
         m = res.scalar_one_or_none()
         return self._to_entity(m) if m else None
@@ -30,12 +32,15 @@ class QueueRepository(BaseRepository[QueueModel]):
     async def create_or_update_queue(self, queue: Queue) -> Queue:
         now = datetime.now(UTC)
         backend = queue.broker_backend or "native"
-        existing = await self.get_by_name(queue.queue_name)
+        existing = await self.get_by_name(queue.queue_name, tenant_id=queue.tenant_id)
         if existing:
             backend = queue.broker_backend or existing.broker_backend or "native"
             stmt = (
                 update(QueueModel)
-                .where(QueueModel.queue_name == queue.queue_name)
+                .where(
+                    QueueModel.queue_name == queue.queue_name,
+                    QueueModel.tenant_id == queue.tenant_id,
+                )
                 .values(
                     enabled=queue.enabled,
                     default_priority=queue.default_priority,
@@ -53,6 +58,7 @@ class QueueRepository(BaseRepository[QueueModel]):
         else:
             model = QueueModel(
                 queue_name=queue.queue_name,
+                tenant_id=queue.tenant_id,
                 enabled=queue.enabled,
                 default_priority=queue.default_priority,
                 max_concurrency=queue.max_concurrency,
@@ -69,8 +75,11 @@ class QueueRepository(BaseRepository[QueueModel]):
             queue.broker_backend = backend
         return queue
 
-    async def list_queues(self) -> list[Queue]:
-        stmt = select(QueueModel).order_by(QueueModel.queue_name.asc())
+    async def list_queues(self, tenant_id: str | None = None) -> list[Queue]:
+        stmt = select(QueueModel)
+        if tenant_id:
+            stmt = stmt.where(QueueModel.tenant_id == tenant_id)
+        stmt = stmt.order_by(QueueModel.queue_name.asc())
         res = await self.session.execute(stmt)
         return [self._to_entity(m) for m in res.scalars().all()]
 
@@ -138,6 +147,10 @@ class QueueRepository(BaseRepository[QueueModel]):
             .group_by(QueueModel.queue_name)
             .order_by(QueueModel.queue_name.asc())
         )
+        # Scope the queue list itself to the tenant
+        if tenant_id:
+            stmt = stmt.where(QueueModel.tenant_id == tenant_id)
+
         res = await self.session.execute(stmt)
         summary: list[tuple[str, int, float | None]] = []
         for row in res.all():
@@ -187,12 +200,14 @@ class QueueRepository(BaseRepository[QueueModel]):
 
         return task_rowcount
 
-    async def delete_queue(self, queue_name: str) -> bool:
+    async def delete_queue(self, queue_name: str, tenant_id: str | None = None) -> bool:
         from sqlalchemy import delete
         from sqlalchemy.exc import IntegrityError
 
         try:
             stmt = delete(QueueModel).where(QueueModel.queue_name == queue_name)
+            if tenant_id:
+                stmt = stmt.where(QueueModel.tenant_id == tenant_id)
             res = await self.session.execute(stmt)
             rowcount = getattr(res, "rowcount", 0)
             return bool(rowcount and rowcount > 0)
@@ -224,6 +239,7 @@ class QueueRepository(BaseRepository[QueueModel]):
     def _to_entity(self, m: QueueModel) -> Queue:
         return Queue(
             queue_name=m.queue_name,
+            tenant_id=m.tenant_id,
             enabled=m.enabled,
             default_priority=m.default_priority,
             max_concurrency=m.max_concurrency,

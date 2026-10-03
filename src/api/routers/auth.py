@@ -60,12 +60,16 @@ async def register_user(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Email '{request.email}' is already registered.",
         )
+    # If the caller did not specify a tenant_id, derive one from the username
+    # so that every new user is automatically isolated in their own tenant.
+    # Only explicit "default" or a custom value keeps users in a shared tenant.
+    effective_tenant = request.tenant_id if request.tenant_id else request.username.lower()
     user = await user_repo.create_user(
         username=request.username,
         email=request.email,
         password_hash=hash_password(request.password),
         role=request.role,
-        tenant_id=request.tenant_id,
+        tenant_id=effective_tenant,
     )
     return UserResponse(
         user_id=str(user.user_id),

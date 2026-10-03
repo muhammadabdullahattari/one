@@ -30,11 +30,15 @@ class UserCreateRequest(BaseModel):
         description="Assigned RBAC role: 'admin', 'operator', or 'viewer'.",
         examples=["operator"],
     )
-    tenant_id: str = Field(
-        default="default",
+    tenant_id: str | None = Field(
+        default=None,
         max_length=64,
-        description="Assigned tenant or project identifier.",
-        examples=["default", "project-alpha"],
+        description=(
+            "Assigned tenant or project identifier. "
+            "If omitted, a unique tenant is auto-created from your username. "
+            "Pass 'default' to join the shared system tenant."
+        ),
+        examples=[None, "default", "project-alpha"],
     )
 
     @field_validator("password")

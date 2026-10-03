@@ -28,11 +28,13 @@ class WorkerRuntime:
         concurrency: int | None = None,
         broker_adapter: BrokerAdapter | None = None,
         executor: TaskExecutor | None = None,
+        tenant_id: str | None = None,
     ) -> None:
         self.settings = get_settings()
         self.worker_id = (
             worker_id or f"worker-{socket.gethostname()}-{os.getpid()}-{uuid4().hex[:6]}"
         )
+        self.tenant_id = tenant_id or "default"
         self.queues = queues or ["default"]
         self.concurrency = concurrency or self.settings.worker_concurrency
         self.broker = broker_adapter or get_broker_adapter("native")
@@ -57,6 +59,7 @@ class WorkerRuntime:
             await worker_repo.register_worker(
                 Worker(
                     worker_id=self.worker_id,
+                    tenant_id=self.tenant_id,
                     hostname=socket.gethostname(),
                     process_id=os.getpid(),
                     version=self.settings.app_version,

@@ -8,6 +8,9 @@ from src.api.schemas.common import PaginatedResponse
 
 class WorkerRegisterRequest(BaseModel):
     worker_id: str = Field(..., min_length=1, max_length=100, description="Unique worker node ID.")
+    tenant_id: str = Field(
+        default="default", description="Tenant or project identifier for worker isolation."
+    )
     hostname: str = Field(..., max_length=255, description="Host machine name / IP.")
     process_id: int = Field(..., description="Operating system PID.")
     version: str = Field(default="0.1.0", description="Worker application version.")
@@ -23,6 +26,7 @@ class WorkerRegisterRequest(BaseModel):
 class WorkerResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     worker_id: str = Field(..., description="Worker identifier.")
+    tenant_id: str = Field(default="default", description="Owning tenant identifier.")
     hostname: str = Field(..., description="Host machine.")
     process_id: int = Field(..., description="Process ID.")
     version: str = Field(..., description="Worker version.")

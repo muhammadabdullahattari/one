@@ -11,6 +11,9 @@ from src.persistence.models.base import Base
 class WorkerModel(Base):
     __tablename__ = "workers"
     worker_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(64), default="default", nullable=False, index=True
+    )
     hostname: Mapped[str] = mapped_column(String(256), nullable=False)
     process_id: Mapped[int] = mapped_column(Integer, nullable=False)
     version: Mapped[str] = mapped_column(String(32), default="0.1.0", nullable=False)

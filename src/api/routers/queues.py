@@ -25,11 +25,24 @@ from src.security.principal import Principal
 router = APIRouter(prefix="/queues", tags=["Queues"])
 
 
+def _effective_tenant(principal: Principal) -> str | None:
+    """Return the tenant_id that must be used for isolation.
+
+    - Non-admin principals with a tenant_id → always scoped to that tenant.
+    - Admin principals with tenant_id=None → unscoped (sees all, for internal use).
+    """
+    if principal.tenant_id and not (principal.is_admin and principal.tenant_id is None):
+        return principal.tenant_id
+    return None
+
+
 @router.get("", response_model=QueueListResponse, summary="List all configured task queues")
 async def list_queues(
     queue_repo: Annotated[QueueRepository, Depends(get_queue_repository)],
+    principal: Annotated[Principal, Depends(get_current_principal)],
 ) -> QueueListResponse:
-    queues = await queue_repo.list_queues()
+    tenant = _effective_tenant(principal)
+    queues = await queue_repo.list_queues(tenant_id=tenant)
     return QueueListResponse(
         items=[QueueResponse.model_validate(q) for q in queues],
         total=len(queues),
@@ -50,7 +63,8 @@ async def create_queue(
     queue_repo: Annotated[QueueRepository, Depends(get_queue_repository)],
     principal: Annotated[Principal, Depends(require_role("admin", "operator"))],
 ) -> QueueResponse:
-    existing = await queue_repo.get_by_name(request.queue_name)
+    tenant = _effective_tenant(principal) or "default"
+    existing = await queue_repo.get_by_name(request.queue_name, tenant_id=tenant)
     if existing:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -64,6 +78,7 @@ async def create_queue(
         )
     queue = Queue(
         queue_name=request.queue_name,
+        tenant_id=tenant,
         enabled=request.enabled,
         default_priority=request.default_priority,
         max_concurrency=request.max_concurrency,
@@ -76,9 +91,12 @@ async def create_queue(
 
 @router.get("/{name}", response_model=QueueResponse, summary="Get queue configuration details")
 async def get_queue(
-    name: str, queue_repo: Annotated[QueueRepository, Depends(get_queue_repository)]
+    name: str,
+    queue_repo: Annotated[QueueRepository, Depends(get_queue_repository)],
+    principal: Annotated[Principal, Depends(get_current_principal)],
 ) -> QueueResponse:
-    queue = await queue_repo.get_by_name(name)
+    tenant = _effective_tenant(principal)
+    queue = await queue_repo.get_by_name(name, tenant_id=tenant)
     if not queue:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"Queue '{name}' not found."
@@ -95,7 +113,8 @@ async def update_queue(
     queue_repo: Annotated[QueueRepository, Depends(get_queue_repository)],
     principal: Annotated[Principal, Depends(require_role("admin", "operator"))],
 ) -> QueueResponse:
-    existing = await queue_repo.get_by_name(name)
+    tenant = _effective_tenant(principal) or "default"
+    existing = await queue_repo.get_by_name(name, tenant_id=tenant)
     if not existing:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"Queue '{name}' not found."
@@ -110,6 +129,7 @@ async def update_queue(
         )
     updated_queue = Queue(
         queue_name=name,
+        tenant_id=tenant,
         enabled=request.enabled if request.enabled is not None else existing.enabled,
         default_priority=request.default_priority
         if request.default_priority is not None
@@ -146,7 +166,8 @@ async def delete_queue(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="The default system queue cannot be deleted.",
         )
-    existing = await queue_repo.get_by_name(name)
+    tenant = _effective_tenant(principal) or "default"
+    existing = await queue_repo.get_by_name(name, tenant_id=tenant)
     if not existing:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"Queue '{name}' not found."
@@ -176,7 +197,7 @@ async def delete_queue(
         await queue_repo.reassign_tasks(from_queue=name, to_queue=DEFAULT_QUEUE_NAME)
 
     try:
-        deleted = await queue_repo.delete_queue(name)
+        deleted = await queue_repo.delete_queue(name, tenant_id=tenant)
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -199,12 +220,8 @@ async def get_queue_depth(
     queue_repo: Annotated[QueueRepository, Depends(get_queue_repository)],
     principal: Annotated[Principal, Depends(get_current_principal)],
 ) -> QueueDepthResponse:
-    effective_tenant = (
-        principal.tenant_id
-        if (principal.tenant_id and not (principal.is_admin and principal.tenant_id is None))
-        else None
-    )
-    depth, oldest_age = await queue_repo.get_queue_depth_and_age(name, tenant_id=effective_tenant)
+    tenant = _effective_tenant(principal)
+    depth, oldest_age = await queue_repo.get_queue_depth_and_age(name, tenant_id=tenant)
     return QueueDepthResponse(queue_name=name, depth=depth, oldest_task_age_seconds=oldest_age)
 
 
@@ -221,13 +238,9 @@ async def get_queue_tasks(
     limit: int = Query(50, ge=1, le=1000),
     offset: int = Query(0, ge=0),
 ) -> TaskListResponse:
-    effective_tenant = (
-        principal.tenant_id
-        if (principal.tenant_id and not (principal.is_admin and principal.tenant_id is None))
-        else None
-    )
-    tasks = await task_repo.list_tasks(queue=name, tenant_id=effective_tenant, limit=limit, offset=offset)
-    total = await task_repo.count_tasks(queue=name, tenant_id=effective_tenant)
+    tenant = _effective_tenant(principal)
+    tasks = await task_repo.list_tasks(queue=name, tenant_id=tenant, limit=limit, offset=offset)
+    total = await task_repo.count_tasks(queue=name, tenant_id=tenant)
     return TaskListResponse(
         items=[TaskResponse.model_validate(t) for t in tasks],
         total=total,

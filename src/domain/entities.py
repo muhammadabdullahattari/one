@@ -116,6 +116,7 @@ class TaskOutbox(DomainEntity):
 
 class Queue(DomainEntity):
     queue_name: str
+    tenant_id: str = Field(default="default")
     enabled: bool = Field(default=True)
     default_priority: int = Field(default=5, ge=1, le=10)
     max_concurrency: int = Field(default=100, ge=1)
@@ -142,6 +143,7 @@ class BrokerBackend(DomainEntity):
 
 class Worker(DomainEntity):
     worker_id: str
+    tenant_id: str = Field(default="default")
     hostname: str
     process_id: int
     version: str = Field(default="0.1.0")
