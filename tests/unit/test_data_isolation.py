@@ -506,3 +506,51 @@ async def test_registration_auto_assigns_isolated_tenant(app) -> None:
         assert workers_res.status_code == 200
         assert len(workers_res.json()["items"]) == 0
 
+
+@pytest.mark.asyncio
+async def test_worker_task_claiming_celery_style_isolation(app, token_tenant_a: str) -> None:
+    """Verify that a worker scoped to tenant-beta CANNOT claim tasks submitted by tenant-alpha,
+    just like Celery workers only execute tasks belonging to their own application/project."""
+    from src.broker.native.adapter import NativeBrokerAdapter
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        headers_a = {"Authorization": f"Bearer {token_tenant_a}"}
+
+        q_name = f"claim-q-{uuid4().hex[:6]}"
+        create_q = await client.post(
+            "/api/v1/queues",
+            json={"queue_name": q_name},
+            headers=headers_a,
+        )
+        assert create_q.status_code == 201
+
+        # 1. Tenant A submits a task to the isolated queue
+        submit_res = await client.post(
+            "/api/v1/tasks",
+            json={"task_type": "email.send", "queue": q_name, "payload": {"foo": "bar"}},
+            headers=headers_a,
+        )
+        assert submit_res.status_code == 202
+        task_id = submit_res.json()["task_id"]
+
+        # 2. Worker B (tenant-beta) tries to consume from this queue
+        native_broker = NativeBrokerAdapter()
+        messages_b = await native_broker.consume(
+            queue=q_name, worker_id="worker-beta-1", batch_size=5, tenant_id="tenant-beta"
+        )
+        # Worker B must not receive Tenant A's task
+        claimed_ids_b = [m.message_id for m in messages_b]
+        assert task_id not in claimed_ids_b
+        assert len(messages_b) == 0
+
+        # 3. Worker A (tenant-alpha) consumes from this queue
+        messages_a = await native_broker.consume(
+            queue=q_name, worker_id="worker-alpha-1", batch_size=5, tenant_id="tenant-alpha"
+        )
+        # Worker A must successfully claim Tenant A's task
+        claimed_ids_a = [m.message_id for m in messages_a]
+        assert task_id in claimed_ids_a
+        assert messages_a[0].envelope.tenant_id == "tenant-alpha"
+
+

@@ -80,7 +80,10 @@ class WorkerRuntime:
             await self._semaphore.acquire()
             try:
                 messages = await self.broker.consume(
-                    queue=queue, worker_id=self.worker_id, batch_size=1
+                    queue=queue,
+                    worker_id=self.worker_id,
+                    batch_size=1,
+                    tenant_id=self.tenant_id,
                 )
                 if not messages:
                     self._semaphore.release()

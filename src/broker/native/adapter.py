@@ -35,13 +35,15 @@ class NativeBrokerAdapter(BrokerAdapter):
             await session.execute(stmt)
         return str(envelope.task_id)
 
-    async def consume(self, queue: str, worker_id: str, batch_size: int = 1) -> list[TaskMessage]:
+    async def consume(
+        self, queue: str, worker_id: str, batch_size: int = 1, tenant_id: str | None = None
+    ) -> list[TaskMessage]:
         messages: list[TaskMessage] = []
         async with session_scope() as session:
             task_repo = TaskRepository(session)
             for _ in range(batch_size):
                 claim_result = await task_repo.claim_next(
-                    queue=queue, worker_id=worker_id, lease_seconds=300
+                    queue=queue, worker_id=worker_id, lease_seconds=300, tenant_id=tenant_id
                 )
                 if claim_result is None:
                     break
@@ -120,12 +122,18 @@ class NativeBrokerAdapter(BrokerAdapter):
                     finished_at=now,
                     updated_at=now,
                 )
+                .returning(TaskModel.tenant_id)
             )
-            await session.execute(stmt)
+            res = await session.execute(stmt)
+            task_tenant = res.scalar_one_or_none() or "default"
             dlq_repo = DLQRepository(session)
             await dlq_repo.create_entry(
                 DLQEntry(
-                    task_id=task_uuid, reason=reason, error_class="DeadLetterException", dead_at=now
+                    task_id=task_uuid,
+                    tenant_id=task_tenant,
+                    reason=reason,
+                    error_class="DeadLetterException",
+                    dead_at=now,
                 )
             )
 

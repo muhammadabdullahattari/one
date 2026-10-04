@@ -98,17 +98,22 @@ class TaskRepository(BaseRepository[TaskModel]):
         return {m.task_id: self._to_entity(m) for m in result.scalars().all()}
 
     async def claim_next(
-        self, queue: str, worker_id: str, lease_seconds: int = 300
+        self,
+        queue: str,
+        worker_id: str,
+        lease_seconds: int = 300,
+        tenant_id: str | None = None,
     ) -> tuple[Task, TaskAttempt] | None:
         now = datetime.now(UTC)
         lease_expires = now + timedelta(seconds=lease_seconds)
+        stmt = select(TaskModel).where(
+            TaskModel.queue == queue,
+            TaskModel.status.in_([TaskStatus.QUEUED.value, TaskStatus.PENDING.value]),
+        )
+        if tenant_id:
+            stmt = stmt.where(TaskModel.tenant_id == tenant_id)
         stmt = (
-            select(TaskModel)
-            .where(
-                TaskModel.queue == queue,
-                TaskModel.status.in_([TaskStatus.QUEUED.value, TaskStatus.PENDING.value]),
-            )
-            .order_by(TaskModel.priority.asc(), TaskModel.created_at.asc())
+            stmt.order_by(TaskModel.priority.asc(), TaskModel.created_at.asc())
             .with_for_update(skip_locked=True)
             .limit(1)
         )

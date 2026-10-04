@@ -13,7 +13,7 @@ class BrokerAdapter(ABC):
 
     @abstractmethod
     async def consume(
-        self, queue: str, worker_id: str, batch_size: int = 1
+        self, queue: str, worker_id: str, batch_size: int = 1, tenant_id: str | None = None
     ) -> list[TaskMessage]: ...
 
     @abstractmethod

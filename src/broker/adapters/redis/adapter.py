@@ -71,7 +71,9 @@ class RedisBrokerAdapter(BrokerAdapter):
         )
         return raw_id.decode("utf-8") if isinstance(raw_id, bytes) else str(raw_id)
 
-    async def consume(self, queue: str, worker_id: str, batch_size: int = 1) -> list[TaskMessage]:
+    async def consume(
+        self, queue: str, worker_id: str, batch_size: int = 1, tenant_id: str | None = None
+    ) -> list[TaskMessage]:
         await self._ensure_consumer_group(queue)
         stream_key = self._stream_key(queue)
         group_name = self._group_name(queue)
