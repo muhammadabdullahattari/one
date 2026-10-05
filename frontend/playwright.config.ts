@@ -23,10 +23,22 @@ export default defineConfig({
     video: "retain-on-failure",
   },
 
-  /* Configure projects for major browsers */
+  /* Configure projects */
   projects: [
     {
+      name: "integration",
+      testDir: "./tests/integration",
+      fullyParallel: false,
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      name: "e2e",
+      testDir: "./tests/e2e",
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
       name: "chromium",
+      testDir: "./tests/e2e",
       use: { ...devices["Desktop Chrome"] },
     },
   ],
