@@ -366,17 +366,16 @@ async def get_oldest_task_age_report(
 ) -> OldestTaskAgeResponse:
     effective_tenant = _effective_tenant(principal)
     queues = await queue_repo.list_queues(tenant_id=effective_tenant)
-    oldest_stmt = (
-        select(TaskModel.task_id, TaskModel.queue, TaskModel.created_at)
-        .where(
-            TaskModel.status.in_(
-                [TaskStatus.PENDING.value, TaskStatus.QUEUED.value, TaskStatus.RETRY_WAIT.value]
-            )
+    oldest_stmt = select(TaskModel.task_id, TaskModel.queue, TaskModel.created_at).where(
+        TaskModel.status.in_(
+            [TaskStatus.PENDING.value, TaskStatus.QUEUED.value, TaskStatus.RETRY_WAIT.value]
         )
     )
     if effective_tenant:
         oldest_stmt = oldest_stmt.where(TaskModel.tenant_id == effective_tenant)
-    oldest_stmt = oldest_stmt.distinct(TaskModel.queue).order_by(TaskModel.queue, TaskModel.created_at.asc())
+    oldest_stmt = oldest_stmt.distinct(TaskModel.queue).order_by(
+        TaskModel.queue, TaskModel.created_at.asc()
+    )
     res = await session.execute(oldest_stmt)
     oldest_by_queue = {row.queue: (row.task_id, row.created_at) for row in res.all()}
     now = datetime.now(UTC)

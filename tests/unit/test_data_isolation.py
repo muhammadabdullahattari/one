@@ -3,10 +3,9 @@ from uuid import uuid4
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-
 from src.api.main import create_app
 from src.core.constants import TaskStatus
-from src.domain.entities import DLQEntry, Task, Worker
+from src.domain.entities import DLQEntry, Worker
 from src.persistence.models.task import TaskModel
 from src.persistence.repositories.dlq_repository import DLQRepository
 from src.persistence.repositories.worker_repository import WorkerRepository
@@ -280,6 +279,14 @@ async def test_dlq_tenant_isolation(app, token_tenant_a: str, token_tenant_b: st
         item_ids = [d["dlq_id"] for d in dlq_items]
         assert str(dlq_a_id) in item_ids
         assert str(dlq_b_id) not in item_ids
+
+        # User B lists DLQ -> only sees DLQ entry B
+        list_b = await client.get("/api/v1/dlq", headers=headers_b)
+        assert list_b.status_code == 200
+        dlq_items_b = list_b.json()["items"]
+        item_ids_b = [d["dlq_id"] for d in dlq_items_b]
+        assert str(dlq_b_id) in item_ids_b
+        assert str(dlq_a_id) not in item_ids_b
 
         # 2. User A tries to GET DLQ entry B -> 403 Forbidden
         get_b = await client.get(f"/api/v1/dlq/{dlq_b_id}", headers=headers_a)
@@ -610,6 +617,3 @@ async def test_task_submission_auto_provisions_queue_with_tenant_isolation(
         )
         assert sub_b_default.status_code == 202
         assert sub_b_default.json()["tenant_id"] == "tenant-beta"
-
-
-

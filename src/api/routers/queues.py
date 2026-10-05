@@ -89,6 +89,7 @@ async def create_queue(
     resp = QueueResponse.model_validate(saved)
     try:
         import asyncio
+
         from src.api.routers.ws import ws_manager
 
         asyncio.create_task(
@@ -167,6 +168,7 @@ async def update_queue(
     resp = QueueResponse.model_validate(saved)
     try:
         import asyncio
+
         from src.api.routers.ws import ws_manager
 
         asyncio.create_task(
@@ -242,6 +244,7 @@ async def delete_queue(
 
     try:
         import asyncio
+
         from src.api.routers.ws import ws_manager
 
         asyncio.create_task(

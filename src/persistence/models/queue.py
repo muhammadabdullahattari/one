@@ -25,6 +25,4 @@ class QueueModel(Base, TimestampMixin):
         default="native",
         nullable=False,
     )
-    __table_args__ = (
-        Index("ix_queues_tenant_name", "tenant_id", "queue_name"),
-    )
+    __table_args__ = (Index("ix_queues_tenant_name", "tenant_id", "queue_name"),)

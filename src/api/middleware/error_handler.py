@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
 
@@ -6,7 +7,6 @@ from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-
 from sqlalchemy.exc import IntegrityError
 
 from src.api.schemas.common import ErrorDetail, ErrorResponse
@@ -24,7 +24,7 @@ def _get_request_id(request: Request) -> str:
     return getattr(request.state, "request_id", "req-unknown")
 
 
-def _clean_validation_errors(raw_errors: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _clean_validation_errors(raw_errors: Sequence[Any]) -> list[dict[str, Any]]:
     cleaned = []
     for err in raw_errors:
         item = dict(err)
@@ -74,7 +74,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         primary_msg = "Invalid request parameters or payload structure."
         if cleaned_errors:
             first_err = cleaned_errors[0]
-            loc_parts = [str(l) for l in first_err.get("loc", []) if l != "body"]
+            loc_parts = [str(part) for part in first_err.get("loc", []) if part != "body"]
             loc = " -> ".join(loc_parts)
             msg = str(first_err.get("msg", ""))
             if msg.startswith("Value error, "):

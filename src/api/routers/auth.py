@@ -17,7 +17,6 @@ from src.api.schemas.auth import (
     LoginRequest,
     LoginResponse,
     PrincipalResponse,
-    TokenResponse,
     UserCreateRequest,
     UserResponse,
 )

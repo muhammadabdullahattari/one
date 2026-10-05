@@ -117,6 +117,7 @@ async def drain_worker(
     resp = _to_response(updated or worker)
     try:
         import asyncio
+
         from src.api.routers.ws import ws_manager
 
         asyncio.create_task(
@@ -157,6 +158,7 @@ async def deregister_worker(
         )
     try:
         import asyncio
+
         from src.api.routers.ws import ws_manager
 
         asyncio.create_task(
