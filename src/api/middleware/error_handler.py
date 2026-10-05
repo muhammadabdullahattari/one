@@ -7,6 +7,8 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from sqlalchemy.exc import IntegrityError
+
 from src.api.schemas.common import ErrorDetail, ErrorResponse
 from src.domain.exceptions import (
     IdempotencyConflictError,
@@ -175,6 +177,39 @@ def register_exception_handlers(app: FastAPI) -> None:
         )
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST, content=payload.model_dump(mode="json")
+        )
+
+    @app.exception_handler(PermissionError)
+    async def permission_error_handler(request: Request, exc: PermissionError) -> JSONResponse:
+        request_id = _get_request_id(request)
+        payload = ErrorResponse(
+            error=ErrorDetail(
+                code="FORBIDDEN",
+                message=str(exc),
+                details={},
+                request_id=request_id,
+                timestamp=datetime.now(UTC),
+            )
+        )
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN, content=payload.model_dump(mode="json")
+        )
+
+    @app.exception_handler(IntegrityError)
+    async def integrity_error_handler(request: Request, exc: IntegrityError) -> JSONResponse:
+        request_id = _get_request_id(request)
+        logger.warning("database_integrity_violation", error=str(exc), path=request.url.path)
+        payload = ErrorResponse(
+            error=ErrorDetail(
+                code="INTEGRITY_ERROR",
+                message="A data integrity conflict or constraint violation occurred.",
+                details={"error": str(exc.orig) if hasattr(exc, "orig") else str(exc)},
+                request_id=request_id,
+                timestamp=datetime.now(UTC),
+            )
+        )
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT, content=payload.model_dump(mode="json")
         )
 
     @app.exception_handler(Exception)

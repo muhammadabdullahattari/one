@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy import func, select, update
 
-from src.core.constants import TaskStatus
+from src.core.constants import DEFAULT_QUEUE_NAME, TaskStatus
 from src.domain.entities import Queue
 from src.persistence.models.queue import QueueModel
 from src.persistence.models.task import TaskModel
@@ -12,8 +12,16 @@ from src.persistence.repositories.base import BaseRepository
 class QueueRepository(BaseRepository[QueueModel]):
     async def get_by_name(self, queue_name: str, tenant_id: str | None = None) -> Queue | None:
         stmt = select(QueueModel).where(QueueModel.queue_name == queue_name)
-        if tenant_id:
-            stmt = stmt.where(QueueModel.tenant_id == tenant_id)
+        if tenant_id and queue_name != DEFAULT_QUEUE_NAME:
+            stmt = stmt.where(
+                (QueueModel.tenant_id == tenant_id) | (QueueModel.tenant_id == "default")
+            )
+        res = await self.session.execute(stmt)
+        m = res.scalar_one_or_none()
+        return self._to_entity(m) if m else None
+
+    async def get_by_name_global(self, queue_name: str) -> Queue | None:
+        stmt = select(QueueModel).where(QueueModel.queue_name == queue_name)
         res = await self.session.execute(stmt)
         m = res.scalar_one_or_none()
         return self._to_entity(m) if m else None
@@ -74,6 +82,54 @@ class QueueRepository(BaseRepository[QueueModel]):
             queue.updated_at = now
             queue.broker_backend = backend
         return queue
+
+    async def ensure_queue_exists(
+        self, queue_name: str, tenant_id: str, default_priority: int = 5
+    ) -> Queue:
+        """Validate that the queue exists and is permitted, or auto-provision it.
+
+        - If queue is DEFAULT_QUEUE_NAME or tenant_id == 'default', it is shared/allowed.
+        - If queue exists and is owned by `tenant_id`, it is allowed.
+        - If queue exists and is owned by another tenant, raise PermissionError.
+        - If queue does not exist, auto-provision it for `tenant_id`.
+        """
+        existing = await self.get_by_name_global(queue_name)
+        if existing:
+            if (
+                existing.queue_name == DEFAULT_QUEUE_NAME
+                or existing.tenant_id in ("default", tenant_id)
+                or tenant_id == "default"
+            ):
+                if not existing.enabled:
+                    raise ValueError(
+                        f"Queue '{queue_name}' is currently disabled and not accepting new tasks."
+                    )
+                return existing
+            raise PermissionError(
+                f"Queue '{queue_name}' belongs to tenant '{existing.tenant_id}', not '{tenant_id}'."
+            )
+
+        now = datetime.now(UTC)
+        new_queue = Queue(
+            queue_name=queue_name,
+            tenant_id=tenant_id,
+            enabled=True,
+            default_priority=default_priority,
+            max_concurrency=100,
+            rate_limit_rps=100,
+            retry_defaults={},
+            retention_days=30,
+            broker_backend="native",
+            created_at=now,
+            updated_at=now,
+        )
+        try:
+            return await self.create_or_update_queue(new_queue)
+        except Exception:
+            existing = await self.get_by_name_global(queue_name)
+            if existing:
+                return existing
+            raise
 
     async def list_queues(self, tenant_id: str | None = None) -> list[Queue]:
         stmt = select(QueueModel)

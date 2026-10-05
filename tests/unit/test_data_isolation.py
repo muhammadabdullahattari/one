@@ -557,3 +557,59 @@ async def test_worker_task_claiming_celery_style_isolation(app, token_tenant_a: 
         assert messages_a[0].envelope.tenant_id == "tenant-alpha"
 
 
+@pytest.mark.asyncio
+async def test_task_submission_auto_provisions_queue_with_tenant_isolation(
+    app, token_tenant_a: str, token_tenant_b: str
+) -> None:
+    """Verify that submitting to a new/ad-hoc queue auto-provisions it for the caller's tenant
+    without foreign key violations, and prevents cross-tenant submission to that queue."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        headers_a = {"Authorization": f"Bearer {token_tenant_a}"}
+        headers_b = {"Authorization": f"Bearer {token_tenant_b}"}
+
+        adhoc_q = f"adhoc-q-{uuid4().hex[:6]}"
+
+        # 1. Tenant A submits a task to a non-existent queue -> auto-provisions queue
+        sub_a = await client.post(
+            "/api/v1/tasks",
+            json={"task_type": "order.process", "queue": adhoc_q, "payload": {"amount": 100}},
+            headers=headers_a,
+        )
+        assert sub_a.status_code == 202
+        task_data = sub_a.json()
+        assert task_data["queue"] == adhoc_q
+        assert task_data["tenant_id"] == "tenant-alpha"
+
+        # 2. Verify queue now exists and belongs to Tenant A
+        q_get = await client.get(f"/api/v1/queues/{adhoc_q}", headers=headers_a)
+        assert q_get.status_code == 200
+        assert q_get.json()["queue_name"] == adhoc_q
+        assert q_get.json()["tenant_id"] == "tenant-alpha"
+
+        # 3. Tenant B lists queues -> must NOT see Tenant A's auto-provisioned queue
+        list_b = await client.get("/api/v1/queues", headers=headers_b)
+        assert list_b.status_code == 200
+        q_names_b = [q["queue_name"] for q in list_b.json()["items"]]
+        assert adhoc_q not in q_names_b
+
+        # 4. Tenant B attempts to submit task into Tenant A's private queue -> 403 Forbidden
+        sub_b_forbidden = await client.post(
+            "/api/v1/tasks",
+            json={"task_type": "order.process", "queue": adhoc_q, "payload": {"amount": 50}},
+            headers=headers_b,
+        )
+        assert sub_b_forbidden.status_code == 403
+        assert "belongs to tenant 'tenant-alpha'" in sub_b_forbidden.json()["error"]["message"]
+
+        # 5. Tenant B can submit to the shared "default" queue without conflict
+        sub_b_default = await client.post(
+            "/api/v1/tasks",
+            json={"task_type": "order.process", "queue": "default", "payload": {"amount": 25}},
+            headers=headers_b,
+        )
+        assert sub_b_default.status_code == 202
+        assert sub_b_default.json()["tenant_id"] == "tenant-beta"
+
+
+

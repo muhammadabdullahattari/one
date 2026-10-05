@@ -77,6 +77,8 @@ export function useSubmitTask() {
     }) => apiClient.post<Task>("/tasks", body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.queues() });
+      queryClient.invalidateQueries({ queryKey: ["analytics"] });
     },
   });
 }

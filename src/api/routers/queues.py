@@ -64,7 +64,7 @@ async def create_queue(
     principal: Annotated[Principal, Depends(require_role("admin", "operator"))],
 ) -> QueueResponse:
     tenant = _effective_tenant(principal) or "default"
-    existing = await queue_repo.get_by_name(request.queue_name, tenant_id=tenant)
+    existing = await queue_repo.get_by_name_global(request.queue_name)
     if existing:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -127,6 +127,11 @@ async def update_queue(
     principal: Annotated[Principal, Depends(require_role("admin", "operator"))],
 ) -> QueueResponse:
     tenant = _effective_tenant(principal) or "default"
+    if name == DEFAULT_QUEUE_NAME and (not principal.is_admin or principal.tenant_id is not None):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="The default system queue configuration can only be modified by a global administrator.",
+        )
     existing = await queue_repo.get_by_name(name, tenant_id=tenant)
     if not existing:
         raise HTTPException(

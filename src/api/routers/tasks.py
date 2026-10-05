@@ -53,18 +53,29 @@ async def submit_task(
             )
         tenant_id = scoped_tenant
 
-    task = await task_service.submit_task(
-        task_type=request.task_type,
-        payload=request.payload,
-        queue=request.queue,
-        priority=request.priority,
-        max_attempts=request.max_attempts,
-        timeout_seconds=request.timeout_seconds,
-        idempotency_key=request.idempotency_key,
-        delay_seconds=request.delay_seconds,
-        tenant_id=tenant_id,
-        metadata=request.metadata,
-    )
+    try:
+        task = await task_service.submit_task(
+            task_type=request.task_type,
+            payload=request.payload,
+            queue=request.queue,
+            priority=request.priority,
+            max_attempts=request.max_attempts,
+            timeout_seconds=request.timeout_seconds,
+            idempotency_key=request.idempotency_key,
+            delay_seconds=request.delay_seconds,
+            tenant_id=tenant_id,
+            metadata=request.metadata,
+        )
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(exc),
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
     task_res = TaskResponse.model_validate(task)
     try:
         asyncio.create_task(

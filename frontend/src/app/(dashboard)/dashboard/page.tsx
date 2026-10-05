@@ -35,9 +35,15 @@ export default function DashboardPage() {
 
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [taskType, setTaskType] = useState("");
-  const [queue, setQueue] = useState("default");
+  const [queueSelection, setQueueSelection] = useState("default");
+  const [customQueue, setCustomQueue] = useState("");
   const [priority, setPriority] = useState(5);
+  const [formError, setFormError] = useState<string | null>(null);
   const submitTask = useSubmitTask();
+
+  const availableQueues = Array.from(
+    new Set(["default", ...(queuesData?.items.map((q) => q.queue_name) || [])])
+  );
 
   const activeWorkersCount =
     workersData?.items.filter((w) => w.status === "active").length || 0;
@@ -86,14 +92,29 @@ export default function DashboardPage() {
 
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!taskType) return;
-    await submitTask.mutateAsync({
-      task_type: taskType,
-      queue,
-      priority: Number(priority),
-    });
-    setTaskType("");
-    setShowSubmitModal(false);
+    if (!taskType.trim()) return;
+    setFormError(null);
+    const targetQueue =
+      queueSelection === "custom"
+        ? customQueue.trim() || "default"
+        : queueSelection;
+
+    try {
+      await submitTask.mutateAsync({
+        task_type: taskType.trim(),
+        queue: targetQueue,
+        priority: Number(priority),
+      });
+      setTaskType("");
+      setQueueSelection("default");
+      setCustomQueue("");
+      setPriority(5);
+      setShowSubmitModal(false);
+    } catch (err: any) {
+      setFormError(
+        err.message || "Failed to submit task. Please verify your input parameters."
+      );
+    }
   };
 
   return (
@@ -281,6 +302,11 @@ export default function DashboardPage() {
             </CardHeader>
             <form onSubmit={handleCreateTask}>
               <CardContent className="space-y-4">
+                {formError && (
+                  <div className="p-3 text-xs rounded-md bg-destructive/10 text-destructive border border-destructive/20 font-medium">
+                    {formError}
+                  </div>
+                )}
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-muted-foreground">Task Type *</label>
                   <Input
@@ -292,11 +318,32 @@ export default function DashboardPage() {
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-muted-foreground">Queue</label>
-                  <Input
-                    placeholder="default"
-                    value={queue}
-                    onChange={(e) => setQueue(e.target.value)}
-                  />
+                  <select
+                    value={queueSelection}
+                    onChange={(e) => {
+                      setQueueSelection(e.target.value);
+                      if (e.target.value !== "custom") {
+                        setCustomQueue("");
+                      }
+                    }}
+                    className="w-full text-xs h-9 rounded-md border border-input bg-background px-3 text-foreground"
+                  >
+                    {availableQueues.map((q) => (
+                      <option key={q} value={q}>
+                        {q} {q === "default" ? "(system default)" : ""}
+                      </option>
+                    ))}
+                    <option value="custom">+ Create new queue...</option>
+                  </select>
+                  {queueSelection === "custom" && (
+                    <Input
+                      placeholder="Enter new queue name (e.g. notifications)"
+                      value={customQueue}
+                      onChange={(e) => setCustomQueue(e.target.value)}
+                      className="mt-1.5 text-xs font-mono h-8"
+                      required
+                    />
+                  )}
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-muted-foreground">Priority (1-10)</label>
@@ -310,7 +357,14 @@ export default function DashboardPage() {
                 </div>
               </CardContent>
               <div className="p-6 pt-0 flex justify-end gap-2">
-                <Button type="button" variant="outline" onClick={() => setShowSubmitModal(false)}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setShowSubmitModal(false);
+                    setFormError(null);
+                  }}
+                >
                   Cancel
                 </Button>
                 <Button type="submit" disabled={submitTask.isPending}>

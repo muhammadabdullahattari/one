@@ -14,6 +14,7 @@ from src.domain.task_registry import global_task_registry
 from src.persistence.models.task import TaskModel
 from src.persistence.repositories.idempotency_repository import IdempotencyRepository
 from src.persistence.repositories.outbox_repository import OutboxRepository
+from src.persistence.repositories.queue_repository import QueueRepository
 from src.persistence.repositories.task_repository import TaskRepository
 from src.persistence.result_backend import ResultBackend
 from src.persistence.session import session_scope
@@ -30,11 +31,13 @@ class TaskLifecycleService:
         idempotency_repo: IdempotencyRepository | None = None,
         rate_limiter: TokenBucketRateLimiter | None = None,
         result_backend: ResultBackend | None = None,
+        queue_repo: QueueRepository | None = None,
     ) -> None:
         self.settings = get_settings()
         self._task_repo = task_repo
         self._outbox_repo = outbox_repo
         self._idempotency_repo = idempotency_repo
+        self._queue_repo = queue_repo
         self.rate_limiter = rate_limiter or TokenBucketRateLimiter()
         self.result_backend = result_backend or ResultBackend(self.settings.task_max_payload_bytes)
 
@@ -107,11 +110,28 @@ class TaskLifecycleService:
                         existing_task = await task_repo.get_by_id(existing.task_id)
                         if existing_task:
                             return existing_task
+        target_queue = queue or DEFAULT_QUEUE_NAME
+        if self._queue_repo:
+            await self._queue_repo.ensure_queue_exists(
+                queue_name=target_queue, tenant_id=tenant, default_priority=priority
+            )
+        elif self._task_repo and hasattr(self._task_repo, "session"):
+            q_repo = QueueRepository(self._task_repo.session)
+            await q_repo.ensure_queue_exists(
+                queue_name=target_queue, tenant_id=tenant, default_priority=priority
+            )
+        else:
+            async with session_scope() as session:
+                q_repo = QueueRepository(session)
+                await q_repo.ensure_queue_exists(
+                    queue_name=target_queue, tenant_id=tenant, default_priority=priority
+                )
+
         task = Task(
             task_id=task_id,
             tenant_id=tenant,
             task_type=task_type,
-            queue=queue,
+            queue=target_queue,
             status=status,
             priority=priority,
             payload=inline_payload,
@@ -126,7 +146,7 @@ class TaskLifecycleService:
         outbox = TaskOutbox(
             task_id=task_id,
             event_type="task.created",
-            payload={"task_type": task_type, "queue": queue, "priority": priority},
+            payload={"task_type": task_type, "queue": target_queue, "priority": priority},
             created_at=now,
         )
         if self._task_repo:

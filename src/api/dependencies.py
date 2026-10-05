@@ -120,12 +120,14 @@ async def get_task_service(
     task_repo = TaskRepository(session)
     outbox_repo = OutboxRepository(session)
     idempotency_repo = IdempotencyRepository(session)
+    queue_repo = QueueRepository(session)
     rate_limiter = RedisTokenBucketRateLimiter(redis=redis)
     return TaskService(
         task_repo=task_repo,
         outbox_repo=outbox_repo,
         idempotency_repo=idempotency_repo,
         rate_limiter=rate_limiter,
+        queue_repo=queue_repo,
     )
 
 
