@@ -160,6 +160,7 @@ async def get_current_principal(
             role = payload.get("role", "operator")
             tenant_id = payload.get("tenant_id")
             scopes = payload.get("scopes", ["*"])
+            username = payload.get("username")
             return Principal(
                 principal_id=principal_id,
                 role=role,
@@ -167,6 +168,7 @@ async def get_current_principal(
                 scopes=scopes,
                 auth_mode=ApiAuthMode.JWT,
                 is_authenticated=True,
+                username=username,
             )
         except JWTError as exc:
             raise HTTPException(
@@ -202,9 +204,9 @@ async def get_current_principal(
             is_authenticated=True,
         )
 
-    if settings.is_development or settings.is_test:
+    if settings.is_test:
         return Principal(
-            principal_id="dev-operator",
+            principal_id="test-operator",
             role="admin",
             tenant_id=None,
             scopes=["*"],
@@ -214,7 +216,7 @@ async def get_current_principal(
 
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Authentication credentials required (Bearer JWT or X-API-Key).",
+        detail="Authentication credentials required (Bearer JWT or HttpOnly cookie).",
         headers={"WWW-Authenticate": "Bearer"},
     )
 

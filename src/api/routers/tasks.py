@@ -42,15 +42,16 @@ async def submit_task(
     task_service: Annotated[TaskService, Depends(get_task_service)],
     principal: Annotated[Principal, Depends(get_current_principal)],
 ) -> TaskResponse:
-    if principal.tenant_id and not (principal.is_admin and principal.tenant_id is None):
-        if request.tenant_id and request.tenant_id != principal.tenant_id:
+    if principal.is_admin and principal.tenant_id is None:
+        tenant_id = request.tenant_id or "default"
+    else:
+        scoped_tenant = principal.tenant_id or principal.principal_id
+        if request.tenant_id and request.tenant_id != scoped_tenant:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Cross-tenant submission forbidden: Principal '{principal.principal_id}' cannot submit tasks for tenant '{request.tenant_id}'.",
             )
-        tenant_id = principal.tenant_id
-    else:
-        tenant_id = request.tenant_id or principal.tenant_id or "default"
+        tenant_id = scoped_tenant
 
     task = await task_service.submit_task(
         task_type=request.task_type,
@@ -90,15 +91,16 @@ async def list_tasks(
     limit: Annotated[int, Query(ge=1, le=1000, description="Page limit")] = 50,
     offset: Annotated[int, Query(ge=0, description="Page offset")] = 0,
 ) -> TaskListResponse:
-    if principal.tenant_id and not (principal.is_admin and principal.tenant_id is None):
-        if tenant_id and tenant_id != principal.tenant_id:
+    if principal.is_admin and principal.tenant_id is None:
+        effective_tenant = tenant_id
+    else:
+        scoped_tenant = principal.tenant_id or principal.principal_id
+        if tenant_id and tenant_id != scoped_tenant:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Cross-tenant access forbidden: Principal '{principal.principal_id}' cannot access tenant '{tenant_id}'.",
             )
-        effective_tenant = principal.tenant_id
-    else:
-        effective_tenant = tenant_id
+        effective_tenant = scoped_tenant
 
     tasks = await task_repo.list_tasks(
         queue=queue,

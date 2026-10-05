@@ -41,6 +41,17 @@ from src.security.principal import Principal
 router = APIRouter(tags=["Analytics & Observability"])
 
 
+def _effective_tenant(principal: Principal) -> str | None:
+    """Return the tenant_id that must be used for isolation.
+
+    - Global admin with tenant_id=None → unscoped (cluster-wide telemetry).
+    - All other users → strictly isolated to their own tenant telemetry.
+    """
+    if principal.is_admin and principal.tenant_id is None:
+        return None
+    return principal.tenant_id or principal.principal_id
+
+
 @router.get(
     "/analytics/throughput",
     response_model=ThroughputResponse,
@@ -63,8 +74,9 @@ async def get_throughput(
         )
         .label("total_completed"),
     ).where(TaskModel.created_at >= cutoff)
-    if principal.tenant_id and not (principal.is_admin and principal.tenant_id is None):
-        stmt = stmt.where(TaskModel.tenant_id == principal.tenant_id)
+    tenant = _effective_tenant(principal)
+    if tenant:
+        stmt = stmt.where(TaskModel.tenant_id == tenant)
     res = await session.execute(stmt)
     row = res.one()
     total_in = int(row.total_created or 0)
@@ -94,8 +106,9 @@ async def get_status_distribution(
     stmt = select(TaskModel.status, func.count(TaskModel.task_id))
     if queue:
         stmt = stmt.where(TaskModel.queue == queue)
-    if principal.tenant_id and not (principal.is_admin and principal.tenant_id is None):
-        stmt = stmt.where(TaskModel.tenant_id == principal.tenant_id)
+    tenant = _effective_tenant(principal)
+    if tenant:
+        stmt = stmt.where(TaskModel.tenant_id == tenant)
     stmt = stmt.group_by(TaskModel.status)
     res = await session.execute(stmt)
     rows = res.all()
@@ -151,9 +164,10 @@ async def get_latency(
     if queue:
         exec_stmt = exec_stmt.where(TaskModel.queue == queue)
         wait_stmt = wait_stmt.where(TaskModel.queue == queue)
-    if principal.tenant_id and not (principal.is_admin and principal.tenant_id is None):
-        exec_stmt = exec_stmt.where(TaskModel.tenant_id == principal.tenant_id)
-        wait_stmt = wait_stmt.where(TaskModel.tenant_id == principal.tenant_id)
+    tenant = _effective_tenant(principal)
+    if tenant:
+        exec_stmt = exec_stmt.where(TaskModel.tenant_id == tenant)
+        wait_stmt = wait_stmt.where(TaskModel.tenant_id == tenant)
 
     exec_row = (await session.execute(exec_stmt)).one()
     wait_row = (await session.execute(wait_stmt)).one()
@@ -194,8 +208,10 @@ async def get_latency(
 )
 async def get_worker_utilization(
     worker_repo: Annotated[WorkerRepository, Depends(get_worker_repository)],
+    principal: Annotated[Principal, Depends(get_current_principal)],
 ) -> WorkerUtilizationResponse:
-    workers = await worker_repo.list_workers()
+    effective_tenant = _effective_tenant(principal)
+    workers = await worker_repo.list_workers(tenant_id=effective_tenant)
     items: list[WorkerUtilizationItem] = []
     total_util = 0.0
     for w in workers:
@@ -246,9 +262,10 @@ async def get_task_type_stats(
         .filter(TaskModel.status.in_([TaskStatus.FAILED.value, TaskStatus.DEAD.value]))
         .label("failed"),
     )
-    if principal.tenant_id and not (principal.is_admin and principal.tenant_id is None):
-        durations_stmt = durations_stmt.where(TaskModel.tenant_id == principal.tenant_id)
-        stmt = stmt.where(TaskModel.tenant_id == principal.tenant_id)
+    tenant = _effective_tenant(principal)
+    if tenant:
+        durations_stmt = durations_stmt.where(TaskModel.tenant_id == tenant)
+        stmt = stmt.where(TaskModel.tenant_id == tenant)
 
     durations_stmt = durations_stmt.group_by(TaskModel.task_type)
     durations_res = await session.execute(durations_stmt)
@@ -283,11 +300,7 @@ async def get_queue_depth_trend(
     principal: Annotated[Principal, Depends(get_current_principal)],
 ) -> QueueDepthTrendResponse:
     now = datetime.now(UTC)
-    effective_tenant = (
-        principal.tenant_id
-        if (principal.tenant_id and not (principal.is_admin and principal.tenant_id is None))
-        else None
-    )
+    effective_tenant = _effective_tenant(principal)
     summary = await queue_repo.get_queue_backlog_summary(tenant_id=effective_tenant)
     points = [
         QueueDepthPoint(
@@ -311,7 +324,8 @@ async def get_oldest_task_age_report(
     session: Annotated[AsyncSession, Depends(get_db_session)],
     principal: Annotated[Principal, Depends(get_current_principal)],
 ) -> OldestTaskAgeResponse:
-    queues = await queue_repo.list_queues()
+    effective_tenant = _effective_tenant(principal)
+    queues = await queue_repo.list_queues(tenant_id=effective_tenant)
     oldest_stmt = (
         select(TaskModel.task_id, TaskModel.queue, TaskModel.created_at)
         .where(
@@ -320,8 +334,8 @@ async def get_oldest_task_age_report(
             )
         )
     )
-    if principal.tenant_id and not (principal.is_admin and principal.tenant_id is None):
-        oldest_stmt = oldest_stmt.where(TaskModel.tenant_id == principal.tenant_id)
+    if effective_tenant:
+        oldest_stmt = oldest_stmt.where(TaskModel.tenant_id == effective_tenant)
     oldest_stmt = oldest_stmt.distinct(TaskModel.queue).order_by(TaskModel.queue, TaskModel.created_at.asc())
     res = await session.execute(oldest_stmt)
     oldest_by_queue = {row.queue: (row.task_id, row.created_at) for row in res.all()}
@@ -385,8 +399,9 @@ async def get_broker_stats(
         .filter(TaskModel.status == TaskStatus.DEAD.value)
         .label("dead"),
     )
-    if principal.tenant_id and not (principal.is_admin and principal.tenant_id is None):
-        stmt = stmt.where(TaskModel.tenant_id == principal.tenant_id)
+    tenant = _effective_tenant(principal)
+    if tenant:
+        stmt = stmt.where(TaskModel.tenant_id == tenant)
     res = await session.execute(stmt)
     row = res.one()
     return BrokerStatsResponse(

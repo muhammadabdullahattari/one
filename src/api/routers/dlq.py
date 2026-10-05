@@ -50,15 +50,16 @@ async def list_dlq(
     offset: int = Query(0, ge=0, description="Page offset"),
     tenant_id: str | None = Query(None, description="Filter by tenant ID"),
 ) -> DLQListResponse:
-    if principal.tenant_id and not (principal.is_admin and principal.tenant_id is None):
-        if tenant_id and tenant_id != principal.tenant_id:
+    if principal.is_admin and principal.tenant_id is None:
+        effective_tenant = tenant_id
+    else:
+        scoped_tenant = principal.tenant_id or principal.principal_id
+        if tenant_id and tenant_id != scoped_tenant:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Cross-tenant access forbidden: Principal '{principal.principal_id}' cannot access tenant '{tenant_id}'.",
             )
-        effective_tenant = principal.tenant_id
-    else:
-        effective_tenant = tenant_id
+        effective_tenant = scoped_tenant
 
     entries = await dlq_repo.list_entries(limit=limit, offset=offset, tenant_id=effective_tenant)
     total = await dlq_repo.count_entries(tenant_id=effective_tenant)

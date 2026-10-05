@@ -198,10 +198,13 @@ export interface WorkerUtilizationData {
 }
 
 export interface User {
-  user_id: string;
-  email: string;
-  username: string;
+  principal_id?: string;
+  user_id?: string;
+  email?: string;
+  username?: string;
   role: string;
-  tenant_id: string;
-  is_active: boolean;
+  tenant_id?: string;
+  is_active?: boolean;
+  scopes?: string[];
+  auth_mode?: string;
 }

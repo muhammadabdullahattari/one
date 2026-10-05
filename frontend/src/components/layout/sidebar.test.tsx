@@ -4,6 +4,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Sidebar } from "./sidebar";
 import { apiClient } from "@/lib/api-client";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 // Mock next/navigation
 const mockUsePathname = vi.fn();
@@ -15,8 +16,20 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/api-client", () => ({
   apiClient: {
     post: vi.fn(),
+    get: vi.fn().mockResolvedValue({ username: "testuser", tenant_id: "test-tenant" }),
   },
 }));
+
+function renderSidebar() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <Sidebar />
+    </QueryClientProvider>
+  );
+}
 
 describe("Sidebar component", () => {
   beforeEach(() => {
@@ -28,7 +41,7 @@ describe("Sidebar component", () => {
   });
 
   it("renders all navigation items with labels and badges", () => {
-    render(<Sidebar />);
+    renderSidebar();
 
     expect(screen.getByText("Task Engine")).toBeInTheDocument();
     expect(screen.getByText("v5.0 Engine Live")).toBeInTheDocument();
@@ -49,7 +62,7 @@ describe("Sidebar component", () => {
 
   it("highlights active item based on current pathname", () => {
     mockUsePathname.mockReturnValue("/tasks");
-    render(<Sidebar />);
+    renderSidebar();
 
     const tasksLink = screen.getByRole("link", { name: /Task Backlog/i });
     expect(tasksLink.className).toContain("bg-primary text-primary-foreground");
@@ -62,7 +75,7 @@ describe("Sidebar component", () => {
     const user = userEvent.setup();
     (apiClient.post as any).mockResolvedValueOnce({ success: true });
 
-    render(<Sidebar />);
+    renderSidebar();
 
     const logoutButton = screen.getByRole("button", { name: /Sign Out/i });
     await user.click(logoutButton);

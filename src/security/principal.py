@@ -11,6 +11,7 @@ class Principal:
     scopes: list[str] = field(default_factory=lambda: ["*"])
     auth_mode: ApiAuthMode = ApiAuthMode.JWT
     is_authenticated: bool = True
+    username: str | None = None
 
     @property
     def is_admin(self) -> bool:

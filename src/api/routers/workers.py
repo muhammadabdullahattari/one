@@ -12,10 +12,14 @@ router = APIRouter(prefix="/workers", tags=["Workers"])
 
 
 def _effective_tenant(principal: Principal) -> str | None:
-    """Return the tenant_id that must be used for isolation."""
-    if principal.tenant_id and not (principal.is_admin and principal.tenant_id is None):
-        return principal.tenant_id
-    return None
+    """Return the tenant_id that must be used for isolation.
+
+    - Global admin with tenant_id=None → unscoped (sees all cluster workers).
+    - All other users → strictly isolated to their own worker fleet.
+    """
+    if principal.is_admin and principal.tenant_id is None:
+        return None
+    return principal.tenant_id or principal.principal_id
 
 
 def _to_response(w: Worker) -> WorkerResponse:

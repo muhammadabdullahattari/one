@@ -56,15 +56,16 @@ async def list_schedules(
     enabled_only: bool = Query(False, description="Filter only enabled schedules"),
     tenant_id: str | None = Query(None, description="Filter by tenant ID"),
 ) -> ScheduledJobListResponse:
-    if principal.tenant_id and not (principal.is_admin and principal.tenant_id is None):
-        if tenant_id and tenant_id != principal.tenant_id:
+    if principal.is_admin and principal.tenant_id is None:
+        effective_tenant = tenant_id
+    else:
+        scoped_tenant = principal.tenant_id or principal.principal_id
+        if tenant_id and tenant_id != scoped_tenant:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Cross-tenant access forbidden: Principal '{principal.principal_id}' cannot access tenant '{tenant_id}'.",
             )
-        effective_tenant = principal.tenant_id
-    else:
-        effective_tenant = tenant_id
+        effective_tenant = scoped_tenant
 
     schedules = await schedule_repo.list_schedules(
         enabled_only=enabled_only, tenant_id=effective_tenant

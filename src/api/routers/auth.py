@@ -304,4 +304,5 @@ async def get_current_user_profile(
         tenant_id=principal.tenant_id,
         scopes=principal.scopes,
         auth_mode=principal.auth_mode.value,
+        username=principal.username,
     )

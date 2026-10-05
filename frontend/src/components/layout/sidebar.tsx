@@ -17,6 +17,7 @@ import {
   Radio,
 } from "lucide-react";
 import { apiClient } from "@/lib/api-client";
+import { useCurrentUser } from "@/lib/api-hooks";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -31,6 +32,7 @@ const NAV_ITEMS = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { data: user } = useCurrentUser();
 
   const handleLogout = async () => {
     try {
@@ -94,6 +96,21 @@ export function Sidebar() {
       </div>
 
       <div className="p-4 border-t border-border flex flex-col gap-2">
+        {user && (
+          <div className="flex items-center gap-2.5 px-3 py-2 bg-muted/40 rounded-lg border border-border/50">
+            <div className="w-7 h-7 rounded-full bg-primary/20 text-primary font-bold flex items-center justify-center text-xs uppercase shrink-0">
+              {user.username ? user.username[0] : (user.principal_id ? user.principal_id[0] : "U")}
+            </div>
+            <div className="flex flex-col min-w-0">
+              <span className="text-xs font-semibold truncate text-foreground">
+                {user.username || user.principal_id}
+              </span>
+              <span className="text-[10px] text-muted-foreground truncate font-mono">
+                tenant: {user.tenant_id || "default"}
+              </span>
+            </div>
+          </div>
+        )}
         <div className="flex items-center justify-between text-xs text-muted-foreground px-2 py-1 bg-muted/40 rounded-md">
           <span className="flex items-center gap-1.5">
             <Radio className="w-3.5 h-3.5 text-emerald-500" />

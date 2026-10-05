@@ -103,6 +103,7 @@ class PrincipalResponse(BaseModel):
     tenant_id: str | None = Field(None, description="Current tenant/project ID if set.")
     scopes: list[str] = Field(default_factory=list, description="Permitted action scopes.")
     auth_mode: str = Field(..., description="Authentication mode used (jwt, api_key).")
+    username: str | None = Field(None, description="Username if authenticated via user account.")
 
 
 class KeyRotationRequest(BaseModel):

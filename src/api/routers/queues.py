@@ -28,12 +28,12 @@ router = APIRouter(prefix="/queues", tags=["Queues"])
 def _effective_tenant(principal: Principal) -> str | None:
     """Return the tenant_id that must be used for isolation.
 
-    - Non-admin principals with a tenant_id → always scoped to that tenant.
-    - Admin principals with tenant_id=None → unscoped (sees all, for internal use).
+    - Global admin with tenant_id=None → unscoped (sees all cluster queues).
+    - All other users (operators, viewers, or tenant-scoped admins) → strictly isolated.
     """
-    if principal.tenant_id and not (principal.is_admin and principal.tenant_id is None):
-        return principal.tenant_id
-    return None
+    if principal.is_admin and principal.tenant_id is None:
+        return None
+    return principal.tenant_id or principal.principal_id
 
 
 @router.get("", response_model=QueueListResponse, summary="List all configured task queues")
