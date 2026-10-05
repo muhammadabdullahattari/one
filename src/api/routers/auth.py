@@ -15,6 +15,7 @@ from src.api.schemas.auth import (
     KeyRotationRequest,
     KeyRotationResponse,
     LoginRequest,
+    LoginResponse,
     PrincipalResponse,
     TokenResponse,
     UserCreateRequest,
@@ -83,8 +84,8 @@ async def register_user(
 
 @router.post(
     "/login",
-    response_model=TokenResponse,
-    summary="Authenticate with credentials and obtain access + refresh tokens",
+    response_model=LoginResponse,
+    summary="Authenticate with credentials and obtain session via HttpOnly cookies",
 )
 async def login(
     request_data: LoginRequest,
@@ -93,7 +94,7 @@ async def login(
     user_repo: Annotated[UserRepository, Depends(get_user_repository)],
     session_repo: Annotated[UserSessionRepository, Depends(get_user_session_repository)],
     settings: Annotated[Settings, Depends(get_settings)],
-) -> TokenResponse:
+) -> LoginResponse:
     await user_repo.seed_default_users()
     user = await user_repo.get_by_username(request_data.username)
     if not user:
@@ -132,11 +133,9 @@ async def login(
     CookieManager.set_session_id_cookie(response, str(session.session_id), settings)
 
     expires_seconds = settings.access_token_expire_minutes * 60
-    return TokenResponse(
-        access_token=access_tok,
+    return LoginResponse(
         token_type="bearer",
         expires_in=expires_seconds,
-        refresh_token=refresh_tok,
         user_id=str(user.user_id),
         role=user.role,
         tenant_id=user_tenant,
@@ -145,15 +144,15 @@ async def login(
 
 @router.post(
     "/refresh",
-    response_model=TokenResponse,
-    summary="Exchange valid refresh token for a new access token",
+    response_model=LoginResponse,
+    summary="Exchange valid refresh token for a new access token via HttpOnly cookies",
 )
 async def refresh_token(
     request: Request,
     response: Response,
     session_repo: Annotated[UserSessionRepository, Depends(get_user_session_repository)],
     settings: Annotated[Settings, Depends(get_settings)],
-) -> TokenResponse:
+) -> LoginResponse:
     tok = CookieManager.get_refresh_token_from_cookies(request)
 
     if not tok:
@@ -192,11 +191,9 @@ async def refresh_token(
     CookieManager.set_access_token_cookie(response, new_access_tok, settings)
 
     expires_seconds = settings.access_token_expire_minutes * 60
-    return TokenResponse(
-        access_token=new_access_tok,
+    return LoginResponse(
         token_type="bearer",
         expires_in=expires_seconds,
-        refresh_token=tok,
         user_id=user_id,
         role=role,
         tenant_id=tenant_id,

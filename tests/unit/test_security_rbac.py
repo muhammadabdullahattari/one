@@ -81,14 +81,18 @@ async def test_auth_login_and_refresh_flow() -> None:
         )
         assert login_res.status_code == 200
         data = login_res.json()
-        assert "access_token" in data
-        assert "refresh_token" in data
+        assert "access_token" not in data
+        assert "refresh_token" not in data
+        assert "te_access_token" in login_res.cookies
+        assert "te_refresh_token" in login_res.cookies
 
         ref_res = await client.post("/api/v1/auth/refresh")
         assert ref_res.status_code == 200
         new_data = ref_res.json()
-        assert "access_token" in new_data
+        assert "access_token" not in new_data
+        assert "refresh_token" not in new_data
         assert new_data["user_id"] == data["user_id"]
+        assert "te_access_token" in ref_res.cookies
 
 
 @pytest.mark.asyncio
@@ -151,7 +155,9 @@ async def test_cookie_auth_and_silent_refresh_flow() -> None:
 
         refresh_res = await client.post("/api/v1/auth/refresh")
         assert refresh_res.status_code == 200
-        assert "access_token" in refresh_res.json()
+        assert "access_token" not in refresh_res.json()
+        assert "refresh_token" not in refresh_res.json()
+        assert "te_access_token" in refresh_res.cookies
 
         logout_res = await client.post("/api/v1/auth/logout")
         assert logout_res.status_code == 200
@@ -170,15 +176,19 @@ async def test_logout_all_devices_flow() -> None:
             json={"username": "admin", "password": "adminpassword123"},
         )
         assert login1.status_code == 200
-        tok1 = login1.json()["refresh_token"]
+        assert "refresh_token" not in login1.json()
+        assert "access_token" not in login1.json()
+        tok1 = login1.cookies["te_refresh_token"]
 
         login2 = await client.post(
             "/api/v1/auth/login",
             json={"username": "admin", "password": "adminpassword123"},
         )
         assert login2.status_code == 200
-        tok2 = login2.json()["refresh_token"]
-        access_tok2 = login2.json()["access_token"]
+        assert "refresh_token" not in login2.json()
+        assert "access_token" not in login2.json()
+        tok2 = login2.cookies["te_refresh_token"]
+        access_tok2 = login2.cookies["te_access_token"]
 
         logout_all = await client.post(
             "/api/v1/auth/logout-all-devices",

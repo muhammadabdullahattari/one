@@ -44,14 +44,11 @@ test.describe("Authentication Flows", () => {
           status: 200,
           contentType: "application/json",
           body: JSON.stringify({
-            access_token: "mock-jwt-token-val",
             token_type: "bearer",
+            expires_in: 900,
+            user_id: "user-123",
             role: "operator",
-            user: {
-              id: "user-123",
-              username: "operator_jane",
-              role: "operator",
-            },
+            tenant_id: "default",
           }),
         });
       }

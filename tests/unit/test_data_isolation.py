@@ -485,8 +485,11 @@ async def test_registration_auto_assigns_isolated_tenant(app) -> None:
             json={"username": username, "password": "Password123!"},
         )
         assert login_res.status_code == 200
-        token = login_res.json()["access_token"]
+        assert "access_token" not in login_res.json()
+        assert "refresh_token" not in login_res.json()
         assert login_res.json()["tenant_id"] == username.lower()
+        assert "te_access_token" in login_res.cookies
+        token = login_res.cookies["te_access_token"]
 
         headers = {"Authorization": f"Bearer {token}"}
         me_res = await client.get("/api/v1/auth/me", headers=headers)

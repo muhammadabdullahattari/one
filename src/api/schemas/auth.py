@@ -76,14 +76,15 @@ class RefreshTokenRequest(BaseModel):
     )
 
 
-class TokenResponse(BaseModel):
-    access_token: str = Field(..., description="Signed JWT access token.")
-    token_type: str = Field(default="bearer", description="Token scheme.")
-    expires_in: int = Field(..., description="Lifetime in seconds.")
-    refresh_token: str | None = Field(default=None, description="Signed JWT refresh token.")
+class LoginResponse(BaseModel):
     user_id: str = Field(..., description="Authenticated user ID.")
     role: str = Field(..., description="Authenticated role.")
     tenant_id: str | None = Field(default="default", description="Associated tenant scope.")
+    token_type: str = Field(default="bearer", description="Token scheme.")
+    expires_in: int = Field(..., description="Lifetime in seconds.")
+
+
+TokenResponse = LoginResponse
 
 
 class UserResponse(BaseModel):

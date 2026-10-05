@@ -18,6 +18,7 @@ from src.api.schemas.analytics import (
 )
 from src.api.schemas.auth import (
     LoginRequest,
+    LoginResponse,
     PrincipalResponse,
     TokenResponse,
     UserCreateRequest,
@@ -85,6 +86,7 @@ __all__ = [
     "LatencyPercentiles",
     "LatencyResponse",
     "LoginRequest",
+    "LoginResponse",
     "OldestTaskAgeItem",
     "OldestTaskAgeResponse",
     "PaginatedResponse",

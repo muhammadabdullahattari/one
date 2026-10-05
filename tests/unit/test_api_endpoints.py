@@ -63,20 +63,34 @@ async def test_auth_login_and_me_lifecycle(client: AsyncClient) -> None:
     )
     assert login_res.status_code == 200
     token_data = login_res.json()
-    token = token_data["access_token"]
+    assert "access_token" not in token_data
+    assert "refresh_token" not in token_data
     assert token_data["token_type"] == "bearer"
     assert token_data["role"] == "admin"
-    me_res = await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert "te_access_token" in login_res.cookies
+    assert "te_refresh_token" in login_res.cookies
+
+    # Authenticated request via cookie session
+    me_res = await client.get("/api/v1/auth/me")
     assert me_res.status_code == 200
     me_data = me_res.json()
     assert me_data["role"] == "admin"
     assert me_data["principal_id"] == token_data["user_id"]
 
+    # Also verify Authorization header fallback with cookie token
+    cookie_token = login_res.cookies["te_access_token"]
+    me_res_hdr = await client.get(
+        "/api/v1/auth/me", headers={"Authorization": f"Bearer {cookie_token}"}
+    )
+    assert me_res_hdr.status_code == 200
+
     refresh_res = await client.post("/api/v1/auth/refresh")
     assert refresh_res.status_code == 200
     ref_data = refresh_res.json()
-    assert "access_token" in ref_data
+    assert "access_token" not in ref_data
+    assert "refresh_token" not in ref_data
     assert ref_data["user_id"] == token_data["user_id"]
+    assert "te_access_token" in refresh_res.cookies
 
 
 async def test_auth_invalid_credentials(client: AsyncClient) -> None:

@@ -34,7 +34,13 @@ describe("LoginPage component", () => {
 
   it("submits valid credentials and redirects to /dashboard", async () => {
     const user = userEvent.setup();
-    (apiClient.post as any).mockResolvedValueOnce({ access_token: "mock-token", role: "operator" });
+    (apiClient.post as any).mockResolvedValueOnce({
+      token_type: "bearer",
+      expires_in: 900,
+      user_id: "usr-1",
+      role: "operator",
+      tenant_id: "default",
+    });
 
     render(<LoginPage />);
 
