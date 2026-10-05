@@ -13,6 +13,9 @@ import {
   CheckCircle2,
   AlertTriangle,
   X,
+  Sparkles,
+  Info,
+  ChevronDown,
 } from "lucide-react";
 import {
   useSchedules,
@@ -27,6 +30,109 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
+
+const COMMON_TIMEZONES = [
+  { value: "UTC", label: "UTC (Coordinated Universal Time)" },
+  { value: "America/New_York", label: "America/New_York (US Eastern, EDT/EST)" },
+  { value: "America/Chicago", label: "America/Chicago (US Central, CDT/CST)" },
+  { value: "America/Denver", label: "America/Denver (US Mountain, MDT/MST)" },
+  { value: "America/Los_Angeles", label: "America/Los_Angeles (US Pacific, PDT/PST)" },
+  { value: "Europe/London", label: "Europe/London (GMT / British Summer Time)" },
+  { value: "Europe/Paris", label: "Europe/Paris (Central European Time, CET)" },
+  { value: "Europe/Berlin", label: "Europe/Berlin (Central European Time, CET)" },
+  { value: "Asia/Dubai", label: "Asia/Dubai (Gulf Standard Time, GST +4)" },
+  { value: "Asia/Karachi", label: "Asia/Karachi (Pakistan Standard Time, PKT +5)" },
+  { value: "Asia/Kolkata", label: "Asia/Kolkata (India Standard Time, IST +5:30)" },
+  { value: "Asia/Dhaka", label: "Asia/Dhaka (Bangladesh Standard Time, BST +6)" },
+  { value: "Asia/Bangkok", label: "Asia/Bangkok (Indochina Time, ICT +7)" },
+  { value: "Asia/Singapore", label: "Asia/Singapore (Singapore Standard Time, SGT +8)" },
+  { value: "Asia/Tokyo", label: "Asia/Tokyo (Japan Standard Time, JST +9)" },
+  { value: "Australia/Sydney", label: "Australia/Sydney (Australian Eastern Time, AEST +10)" },
+  { value: "Pacific/Auckland", label: "Pacific/Auckland (New Zealand Time, NZST +12)" },
+  { value: "custom", label: "Other / Custom Timezone..." },
+];
+
+const PAYLOAD_TEMPLATES = {
+  email: JSON.stringify(
+    {
+      recipient: "ops-team@company.com",
+      subject: "Scheduled System Digest",
+      template: "daily_summary",
+    },
+    null,
+    2
+  ),
+  report: JSON.stringify(
+    {
+      report_type: "daily_summary",
+      format: "pdf",
+      include_charts: true,
+    },
+    null,
+    2
+  ),
+  cleanup: JSON.stringify(
+    {
+      retention_days: 30,
+      dry_run: false,
+    },
+    null,
+    2
+  ),
+  empty: "{}",
+};
+
+const DAYS_OF_WEEK = [
+  { id: "1", label: "Mon" },
+  { id: "2", label: "Tue" },
+  { id: "3", label: "Wed" },
+  { id: "4", label: "Thu" },
+  { id: "5", label: "Fri" },
+  { id: "6", label: "Sat" },
+  { id: "0", label: "Sun" },
+];
+
+function getHumanReadableCron(cron: string, tz: string): string {
+  const parts = cron.trim().split(/\s+/);
+  if (parts.length !== 5) return `Custom cron schedule: "${cron}"`;
+
+  const [min, hour, dom, mon, dow] = parts;
+  const dayNames: Record<string, string> = {
+    "1": "Monday",
+    "2": "Tuesday",
+    "3": "Wednesday",
+    "4": "Thursday",
+    "5": "Friday",
+    "6": "Saturday",
+    "0": "Sunday",
+    "7": "Sunday",
+  };
+
+  if (cron === "* * * * *") return "Runs every minute";
+  if (min.startsWith("*/") && hour === "*" && dom === "*" && mon === "*" && dow === "*") {
+    return `Runs every ${min.replace("*/", "")} minutes`;
+  }
+  if (min === "0" && hour === "*" && dom === "*" && mon === "*" && dow === "*") {
+    return "Runs hourly at the top of the hour (:00)";
+  }
+  if (!isNaN(Number(min)) && hour === "*" && dom === "*" && mon === "*" && dow === "*") {
+    return `Runs hourly at minute :${min.padStart(2, "0")}`;
+  }
+  if (dom === "*" && mon === "*" && dow === "*" && !isNaN(Number(min)) && !isNaN(Number(hour))) {
+    const formatted = `${hour.padStart(2, "0")}:${min.padStart(2, "0")}`;
+    return `Runs every day at ${formatted} (${tz})`;
+  }
+  if (dom === "*" && mon === "*" && dow in dayNames && !isNaN(Number(min)) && !isNaN(Number(hour))) {
+    const formatted = `${hour.padStart(2, "0")}:${min.padStart(2, "0")}`;
+    return `Runs weekly on ${dayNames[dow]} at ${formatted} (${tz})`;
+  }
+  if (!isNaN(Number(dom)) && mon === "*" && dow === "*" && !isNaN(Number(min)) && !isNaN(Number(hour))) {
+    const formatted = `${hour.padStart(2, "0")}:${min.padStart(2, "0")}`;
+    return `Runs monthly on day ${dom} at ${formatted} (${tz})`;
+  }
+  return `Runs on schedule: ${cron} (${tz})`;
+}
 
 export default function SchedulesPage() {
   const [enabledOnly, setEnabledOnly] = useState(false);
@@ -47,12 +153,91 @@ export default function SchedulesPage() {
   const [formTaskType, setFormTaskType] = useState("");
   const [formQueue, setFormQueue] = useState("default");
   const [recurrenceType, setRecurrenceType] = useState<"cron" | "interval">("cron");
-  const [formCron, setFormCron] = useState("0 * * * *");
+  const [formCron, setFormCron] = useState("0 9 * * *");
+  const [cronFrequency, setCronFrequency] = useState<
+    "every_5m" | "every_15m" | "hourly" | "daily" | "weekly" | "monthly" | "custom"
+  >("daily");
+  const [cronHour, setCronHour] = useState("09");
+  const [cronMinute, setCronMinute] = useState("00");
+  const [cronDayOfWeek, setCronDayOfWeek] = useState("1"); // Mon
+  const [cronDayOfMonth, setCronDayOfMonth] = useState("1");
+  const [showAdvancedCron, setShowAdvancedCron] = useState(false);
+
   const [formInterval, setFormInterval] = useState("300");
   const [formTimezone, setFormTimezone] = useState("UTC");
+  const [customTimezone, setCustomTimezone] = useState("");
   const [formMisfire, setFormMisfire] = useState("coalescing");
   const [formPayload, setFormPayload] = useState("{}");
   const [formEnabled, setFormEnabled] = useState(true);
+
+  const effectiveTimezone =
+    formTimezone === "custom" ? customTimezone.trim() || "UTC" : formTimezone;
+
+  const isPayloadValid = (() => {
+    if (!formPayload.trim()) return true;
+    try {
+      JSON.parse(formPayload);
+      return true;
+    } catch {
+      return false;
+    }
+  })();
+
+  const updateCronFromVisual = (
+    freq: string,
+    hour: string,
+    minute: string,
+    dow: string,
+    dom: string
+  ) => {
+    let expr = "0 * * * *";
+    if (freq === "every_5m") expr = "*/5 * * * *";
+    else if (freq === "every_15m") expr = "*/15 * * * *";
+    else if (freq === "hourly") expr = `${minute} * * * *`;
+    else if (freq === "daily") expr = `${minute} ${hour} * * *`;
+    else if (freq === "weekly") expr = `${minute} ${hour} * * ${dow}`;
+    else if (freq === "monthly") expr = `${minute} ${hour} ${dom} * *`;
+    else return;
+    setFormCron(expr);
+  };
+
+  const handleFrequencyChange = (freq: any) => {
+    setCronFrequency(freq);
+    updateCronFromVisual(freq, cronHour, cronMinute, cronDayOfWeek, cronDayOfMonth);
+  };
+
+  const handleHourChange = (newHour: string) => {
+    setCronHour(newHour);
+    updateCronFromVisual(cronFrequency, newHour, cronMinute, cronDayOfWeek, cronDayOfMonth);
+  };
+
+  const handleMinuteChange = (newMin: string) => {
+    setCronMinute(newMin);
+    updateCronFromVisual(cronFrequency, cronHour, newMin, cronDayOfWeek, cronDayOfMonth);
+  };
+
+  const handleDowChange = (newDow: string) => {
+    setCronDayOfWeek(newDow);
+    updateCronFromVisual(cronFrequency, cronHour, cronMinute, newDow, cronDayOfMonth);
+  };
+
+  const handleDomChange = (newDom: string) => {
+    setCronDayOfMonth(newDom);
+    updateCronFromVisual(cronFrequency, cronHour, cronMinute, cronDayOfWeek, newDom);
+  };
+
+  const handleFormatPayload = () => {
+    try {
+      const parsed = JSON.parse(formPayload || "{}");
+      setFormPayload(JSON.stringify(parsed, null, 2));
+    } catch {
+      // noop
+    }
+  };
+
+  const insertPayloadTemplate = (type: "email" | "report" | "cleanup" | "empty") => {
+    setFormPayload(PAYLOAD_TEMPLATES[type]);
+  };
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,7 +259,7 @@ export default function SchedulesPage() {
         cron: recurrenceType === "cron" ? formCron.trim() : undefined,
         interval_seconds:
           recurrenceType === "interval" ? parseInt(formInterval, 10) : undefined,
-        timezone: formTimezone.trim() || "UTC",
+        timezone: effectiveTimezone,
         misfire_policy: formMisfire,
         enabled: formEnabled,
         payload: parsedPayload,
@@ -395,8 +580,9 @@ export default function SchedulesPage() {
                 Schedule: {selectedSchedule.task_type}
               </CardTitle>
               <button
+                type="button"
                 onClick={() => setSelectedSchedule(null)}
-                className="text-muted-foreground hover:text-foreground p-1"
+                className="text-muted-foreground hover:text-foreground hover:bg-muted p-1.5 rounded-md transition-colors cursor-pointer"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -466,23 +652,24 @@ export default function SchedulesPage() {
       {/* Create Schedule Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
-          <Card className="w-full max-w-lg border-border shadow-2xl">
-            <CardHeader className="flex flex-row items-center justify-between pb-3">
+          <Card className="w-full max-w-xl max-h-[90vh] overflow-y-auto border-border shadow-2xl">
+            <CardHeader className="flex flex-row items-center justify-between pb-3 border-b border-border sticky top-0 bg-card z-10">
               <CardTitle className="text-lg font-bold flex items-center gap-2">
                 <Plus className="h-5 w-5 text-primary" />
                 Create Recurring Schedule
               </CardTitle>
               <button
+                type="button"
                 onClick={() => setShowCreateModal(false)}
-                className="text-muted-foreground hover:text-foreground p-1"
+                className="text-muted-foreground hover:text-foreground hover:bg-muted p-1.5 rounded-md transition-colors cursor-pointer"
               >
                 <X className="h-5 w-5" />
               </button>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-4">
               <form onSubmit={handleCreate} className="space-y-4">
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground block mb-1">
+                  <label className="text-xs font-semibold text-muted-foreground block mb-1">
                     Task Type *
                   </label>
                   <Input
@@ -493,73 +680,310 @@ export default function SchedulesPage() {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="text-xs font-medium text-muted-foreground block mb-1">
+                    <label className="text-xs font-semibold text-muted-foreground block mb-1">
                       Queue
                     </label>
                     <select
-                      className="w-full h-9 rounded-md border border-input bg-background px-3 text-xs"
+                      className="w-full h-9 rounded-md border border-input bg-background px-3 text-xs text-foreground cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                       value={formQueue}
                       onChange={(e) => setFormQueue(e.target.value)}
                     >
-                      <option value="default">default</option>
-                      {queues.map((q) => (
-                        <option key={q.queue_name} value={q.queue_name}>
-                          {q.queue_name}
-                        </option>
-                      ))}
+                      <option value="default">default (system default)</option>
+                      {queues
+                        .filter((q) => q.queue_name !== "default")
+                        .map((q) => (
+                          <option key={q.queue_name} value={q.queue_name}>
+                            {q.queue_name}
+                          </option>
+                        ))}
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-muted-foreground block mb-1">
+                    <label className="text-xs font-semibold text-muted-foreground block mb-1">
                       Timezone
                     </label>
-                    <Input
+                    <select
+                      className="w-full h-9 rounded-md border border-input bg-background px-3 text-xs text-foreground cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                       value={formTimezone}
                       onChange={(e) => setFormTimezone(e.target.value)}
-                      placeholder="UTC"
-                    />
+                    >
+                      {COMMON_TIMEZONES.map((tz) => (
+                        <option key={tz.value} value={tz.value}>
+                          {tz.label}
+                        </option>
+                      ))}
+                    </select>
+                    {formTimezone === "custom" && (
+                      <Input
+                        placeholder="e.g. Europe/Rome"
+                        value={customTimezone}
+                        onChange={(e) => setCustomTimezone(e.target.value)}
+                        className="mt-1.5 text-xs font-mono"
+                        required
+                      />
+                    )}
                   </div>
                 </div>
 
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground block mb-1.5">
+                  <label className="text-xs font-semibold text-muted-foreground block mb-1.5">
                     Recurrence Type
                   </label>
-                  <div className="flex gap-4 mb-2">
-                    <label className="flex items-center gap-1.5 text-xs text-foreground cursor-pointer">
+                  <div className="flex gap-4 mb-2.5">
+                    <label className="flex items-center gap-1.5 text-xs text-foreground cursor-pointer font-medium">
                       <input
                         type="radio"
                         name="recurrence"
                         checked={recurrenceType === "cron"}
                         onChange={() => setRecurrenceType("cron")}
+                        className="cursor-pointer"
                       />
-                      Cron Expression
+                      Cron Schedule (Calendar & Clock)
                     </label>
-                    <label className="flex items-center gap-1.5 text-xs text-foreground cursor-pointer">
+                    <label className="flex items-center gap-1.5 text-xs text-foreground cursor-pointer font-medium">
                       <input
                         type="radio"
                         name="recurrence"
                         checked={recurrenceType === "interval"}
                         onChange={() => setRecurrenceType("interval")}
+                        className="cursor-pointer"
                       />
-                      Fixed Interval (seconds)
+                      Fixed Interval (Seconds)
                     </label>
                   </div>
 
                   {recurrenceType === "cron" ? (
-                    <div>
-                      <Input
-                        value={formCron}
-                        onChange={(e) => setFormCron(e.target.value)}
-                        placeholder="0 * * * * (e.g. hourly)"
-                        className="font-mono text-xs"
-                        required
-                      />
-                      <span className="text-[11px] text-muted-foreground block mt-1">
-                        Format: min hour dom mon dow (e.g. &apos;*/15 * * * *&apos; or &apos;0 0 * * *&apos;)
-                      </span>
+                    <div className="space-y-3 p-3.5 bg-muted/40 rounded-lg border border-border">
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-muted-foreground block">
+                          Schedule Frequency
+                        </label>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                          {[
+                            { id: "every_5m", label: "Every 5 Min" },
+                            { id: "every_15m", label: "Every 15 Min" },
+                            { id: "hourly", label: "Hourly" },
+                            { id: "daily", label: "Daily" },
+                            { id: "weekly", label: "Weekly" },
+                            { id: "monthly", label: "Monthly" },
+                            { id: "custom", label: "Custom Cron" },
+                          ].map((preset) => (
+                            <button
+                              key={preset.id}
+                              type="button"
+                              onClick={() => handleFrequencyChange(preset.id)}
+                              className={cn(
+                                "px-2.5 py-1.5 rounded-md text-xs font-medium border text-center transition-all cursor-pointer",
+                                cronFrequency === preset.id
+                                  ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                                  : "bg-background text-foreground border-input hover:bg-accent hover:border-primary/40"
+                              )}
+                            >
+                              {preset.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Visual Clock / Calendar Controls */}
+                      {(cronFrequency === "daily" ||
+                        cronFrequency === "weekly" ||
+                        cronFrequency === "monthly") && (
+                        <div className="p-3 bg-background rounded-md border border-border space-y-3">
+                          {/* Weekly Calendar Day-of-Week Picker */}
+                          {cronFrequency === "weekly" && (
+                            <div className="space-y-1.5">
+                              <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                                <Calendar className="w-3.5 h-3.5 text-primary" />
+                                Day of Week
+                              </label>
+                              <div className="flex gap-1.5 flex-wrap">
+                                {DAYS_OF_WEEK.map((d) => (
+                                  <button
+                                    key={d.id}
+                                    type="button"
+                                    onClick={() => handleDowChange(d.id)}
+                                    className={cn(
+                                      "px-3 py-1.5 rounded-md text-xs font-semibold transition-all border cursor-pointer",
+                                      cronDayOfWeek === d.id
+                                        ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                                        : "bg-muted/50 text-muted-foreground border-border hover:bg-accent hover:text-foreground"
+                                    )}
+                                  >
+                                    {d.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Monthly Day-of-Month Picker */}
+                          {cronFrequency === "monthly" && (
+                            <div className="space-y-1.5">
+                              <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                                <Calendar className="w-3.5 h-3.5 text-primary" />
+                                Day of Month (1 - 31)
+                              </label>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-muted-foreground">Run on day</span>
+                                <select
+                                  className="h-8 rounded-md border border-input bg-background px-2 text-xs font-mono cursor-pointer"
+                                  value={cronDayOfMonth}
+                                  onChange={(e) => handleDomChange(e.target.value)}
+                                >
+                                  {Array.from({ length: 31 }, (_, i) => String(i + 1)).map(
+                                    (d) => (
+                                      <option key={d} value={d}>
+                                        {d}
+                                      </option>
+                                    )
+                                  )}
+                                </select>
+                                <span className="text-xs text-muted-foreground">of every month</span>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Clock Picker: Hour & Minute */}
+                          <div className="space-y-1.5">
+                            <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                              <Clock className="w-3.5 h-3.5 text-primary" />
+                              Execution Time ({effectiveTimezone})
+                            </label>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <div className="flex items-center gap-1.5 bg-muted/40 p-1.5 rounded-md border border-border">
+                                <select
+                                  className="h-8 rounded-md border border-input bg-background px-2 text-xs font-mono font-semibold cursor-pointer"
+                                  value={cronHour}
+                                  onChange={(e) => handleHourChange(e.target.value)}
+                                >
+                                  {Array.from({ length: 24 }, (_, i) =>
+                                    String(i).padStart(2, "0")
+                                  ).map((h) => (
+                                    <option key={h} value={h}>
+                                      {h}:00 ({Number(h) % 12 || 12}{" "}
+                                      {Number(h) >= 12 ? "PM" : "AM"})
+                                    </option>
+                                  ))}
+                                </select>
+                                <span className="text-xs font-bold text-muted-foreground">:</span>
+                                <select
+                                  className="h-8 rounded-md border border-input bg-background px-2 text-xs font-mono font-semibold cursor-pointer"
+                                  value={cronMinute}
+                                  onChange={(e) => handleMinuteChange(e.target.value)}
+                                >
+                                  {[
+                                    "00",
+                                    "05",
+                                    "10",
+                                    "15",
+                                    "20",
+                                    "25",
+                                    "30",
+                                    "35",
+                                    "40",
+                                    "45",
+                                    "50",
+                                    "55",
+                                  ].map((m) => (
+                                    <option key={m} value={m}>
+                                      {m}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                              <span className="text-xs text-muted-foreground font-mono">
+                                ({cronHour}:{cronMinute} in {effectiveTimezone})
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Hourly minute selector */}
+                      {cronFrequency === "hourly" && (
+                        <div className="p-3 bg-background rounded-md border border-border space-y-1.5">
+                          <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                            <Clock className="w-3.5 h-3.5 text-primary" />
+                            Run at Minute of the Hour
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <select
+                              className="h-8 rounded-md border border-input bg-background px-3 text-xs font-mono cursor-pointer"
+                              value={cronMinute}
+                              onChange={(e) => handleMinuteChange(e.target.value)}
+                            >
+                              <option value="00">At :00 (top of the hour)</option>
+                              <option value="15">At :15 past the hour</option>
+                              <option value="30">At :30 past the hour</option>
+                              <option value="45">At :45 past the hour</option>
+                            </select>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Human-Readable Live Schedule Summary */}
+                      <div className="flex items-start gap-2.5 p-3 rounded-md bg-primary/5 border border-primary/20 text-xs">
+                        <Clock className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                        <div className="space-y-0.5 min-w-0">
+                          <span className="font-semibold text-foreground block">
+                            {getHumanReadableCron(formCron, effectiveTimezone)}
+                          </span>
+                          <span className="text-[11px] font-mono text-muted-foreground block">
+                            Cron:{" "}
+                            <span className="bg-background px-1.5 py-0.5 rounded border border-border text-foreground font-bold">
+                              {formCron}
+                            </span>{" "}
+                            • Timezone: {effectiveTimezone}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Custom Cron Input or Advanced toggle */}
+                      {cronFrequency === "custom" ? (
+                        <div className="space-y-1">
+                          <label className="text-xs font-semibold text-foreground">
+                            Custom Cron Expression *
+                          </label>
+                          <Input
+                            value={formCron}
+                            onChange={(e) => setFormCron(e.target.value)}
+                            placeholder="* * * * *"
+                            className="font-mono text-xs"
+                            required
+                          />
+                          <span className="text-[11px] text-muted-foreground block font-mono">
+                            Format: min (0-59) hour (0-23) dom (1-31) mon (1-12) dow (0-7)
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="pt-0.5">
+                          <button
+                            type="button"
+                            onClick={() => setShowAdvancedCron(!showAdvancedCron)}
+                            className="text-[11px] text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors cursor-pointer"
+                          >
+                            <Sliders className="w-3 h-3" />
+                            {showAdvancedCron
+                              ? "Hide raw expression"
+                              : "Inspect or edit raw cron syntax"}
+                          </button>
+                          {showAdvancedCron && (
+                            <div className="mt-2 space-y-1">
+                              <Input
+                                value={formCron}
+                                onChange={(e) => setFormCron(e.target.value)}
+                                className="font-mono text-xs"
+                              />
+                              <span className="text-[10px] text-muted-foreground block font-mono">
+                                Format: min hour dom mon dow
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div>
@@ -574,53 +998,130 @@ export default function SchedulesPage() {
                         required
                       />
                       <span className="text-[11px] text-muted-foreground block mt-1">
-                        Interval in seconds (e.g. 60 = every minute, 3600 = every hour)
+                        Interval in seconds (e.g. 60 = every minute, 300 = every 5 mins, 3600 = every hour)
                       </span>
                     </div>
                   )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="text-xs font-medium text-muted-foreground block mb-1">
+                    <label className="text-xs font-semibold text-muted-foreground block mb-1">
                       Misfire Policy
                     </label>
                     <select
-                      className="w-full h-9 rounded-md border border-input bg-background px-3 text-xs"
+                      className="w-full h-9 rounded-md border border-input bg-background px-3 text-xs text-foreground cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                       value={formMisfire}
                       onChange={(e) => setFormMisfire(e.target.value)}
                     >
-                      <option value="coalescing">Coalescing (merge missed)</option>
-                      <option value="skip">Skip (ignore missed)</option>
-                      <option value="catch_up">Catch Up (run each missed)</option>
+                      <option value="coalescing">Coalescing (merge missed triggers)</option>
+                      <option value="skip">Skip (ignore missed triggers)</option>
+                      <option value="catch_up">Catch Up (execute every missed trigger)</option>
                     </select>
                   </div>
-                  <div className="flex items-center pt-5">
+                  <div className="flex items-center pt-2 sm:pt-6">
                     <label className="flex items-center gap-2 text-xs cursor-pointer select-none">
                       <input
                         type="checkbox"
                         checked={formEnabled}
                         onChange={(e) => setFormEnabled(e.target.checked)}
-                        className="rounded"
+                        className="rounded cursor-pointer"
                       />
                       <span className="font-medium text-foreground">Enable immediately</span>
                     </label>
                   </div>
                 </div>
 
-                <div>
-                  <label className="text-xs font-medium text-muted-foreground block mb-1">
-                    Task Payload (JSON)
-                  </label>
+                {/* Task Payload (JSON) with Comprehensive Guide & Templates */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+                      Task Payload (JSON)
+                    </label>
+                    {isPayloadValid ? (
+                      <span className="text-[11px] font-medium text-emerald-500 flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Valid JSON
+                      </span>
+                    ) : (
+                      <span className="text-[11px] font-medium text-destructive flex items-center gap-1">
+                        <AlertTriangle className="w-3.5 h-3.5" /> Invalid JSON syntax
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Guide Box */}
+                  <div className="text-[11px] text-muted-foreground bg-muted/40 p-3 rounded-md border border-border space-y-2">
+                    <p className="flex items-start gap-1.5">
+                      <Info className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
+                      <span>
+                        Key-value arguments passed to your Python task handler function (e.g.{" "}
+                        <code className="bg-background px-1 py-0.5 rounded text-foreground font-mono">
+                          def send_email(recipient, subject)
+                        </code>
+                        ). If your task requires no arguments, leave as{" "}
+                        <code className="bg-background px-1 py-0.5 rounded text-foreground font-mono">
+                          {"{}"}
+                        </code>
+                        .
+                      </span>
+                    </p>
+
+                    <div className="flex items-center gap-1.5 flex-wrap pt-1 border-t border-border/60">
+                      <span className="text-[10px] font-semibold text-foreground">Insert example:</span>
+                      <button
+                        type="button"
+                        onClick={() => insertPayloadTemplate("email")}
+                        className="px-2 py-0.5 rounded bg-background hover:bg-accent hover:border-primary/40 border border-border text-[10px] text-foreground font-medium transition-colors cursor-pointer"
+                      >
+                        ✉️ Email Digest
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => insertPayloadTemplate("report")}
+                        className="px-2 py-0.5 rounded bg-background hover:bg-accent hover:border-primary/40 border border-border text-[10px] text-foreground font-medium transition-colors cursor-pointer"
+                      >
+                        📊 Daily Report
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => insertPayloadTemplate("cleanup")}
+                        className="px-2 py-0.5 rounded bg-background hover:bg-accent hover:border-primary/40 border border-border text-[10px] text-foreground font-medium transition-colors cursor-pointer"
+                      >
+                        🧹 Maintenance
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => insertPayloadTemplate("empty")}
+                        className="px-2 py-0.5 rounded bg-background hover:bg-accent hover:border-primary/40 border border-border text-[10px] text-muted-foreground hover:text-foreground font-mono transition-colors cursor-pointer"
+                      >
+                        {"{}"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleFormatPayload}
+                        className="ml-auto px-2 py-0.5 rounded bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 text-[10px] font-semibold transition-colors cursor-pointer flex items-center gap-1"
+                      >
+                        <Sparkles className="w-3 h-3" />
+                        Format JSON
+                      </button>
+                    </div>
+                  </div>
+
                   <textarea
-                    rows={3}
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-xs font-mono text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    rows={4}
+                    className={cn(
+                      "w-full rounded-md border bg-background px-3 py-2 text-xs font-mono text-foreground focus-visible:outline-none focus-visible:ring-1",
+                      isPayloadValid
+                        ? "border-input focus-visible:ring-ring"
+                        : "border-destructive focus-visible:ring-destructive"
+                    )}
                     value={formPayload}
                     onChange={(e) => setFormPayload(e.target.value)}
+                    placeholder='{\n  "key": "value"\n}'
                   />
                 </div>
 
-                <div className="flex justify-end gap-2 pt-3 border-t border-border">
+                <div className="flex justify-end gap-2 pt-3 border-t border-border sticky bottom-0 bg-card py-2">
                   <Button
                     type="button"
                     variant="outline"
@@ -632,7 +1133,7 @@ export default function SchedulesPage() {
                   <Button
                     type="submit"
                     size="sm"
-                    disabled={createSchedule.isPending}
+                    disabled={createSchedule.isPending || !isPayloadValid}
                     className="gap-1.5"
                   >
                     {createSchedule.isPending ? "Creating..." : "Save Schedule"}
