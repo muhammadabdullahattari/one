@@ -123,6 +123,22 @@ class WorkerRuntime:
                         task_id=str(task_id),
                         duration=result.duration_seconds,
                     )
+                    try:
+                        from src.api.routers.ws import ws_manager
+
+                        await ws_manager.broadcast(
+                            "tasks",
+                            {
+                                "type": "task.succeeded",
+                                "data": {
+                                    "task_id": str(task_id),
+                                    "status": "SUCCEEDED",
+                                    "duration_seconds": result.duration_seconds,
+                                },
+                            },
+                        )
+                    except Exception:
+                        pass
                 else:
                     retryable = default_retry_policy.is_retryable(
                         attempt=envelope.attempt_count + 1,
@@ -148,6 +164,22 @@ class WorkerRuntime:
                         error=result.error_message,
                         retryable=retryable,
                     )
+                    try:
+                        from src.api.routers.ws import ws_manager
+
+                        await ws_manager.broadcast(
+                            "tasks",
+                            {
+                                "type": "task.failed",
+                                "data": {
+                                    "task_id": str(task_id),
+                                    "status": "RETRY_WAIT" if retryable else "FAILED",
+                                    "error_class": result.error_class,
+                                },
+                            },
+                        )
+                    except Exception:
+                        pass
         except Exception as exc:
             logger.error("Unhandled error processing task", task_id=str(task_id), error=str(exc))
         finally:

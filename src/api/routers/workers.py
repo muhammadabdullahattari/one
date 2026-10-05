@@ -105,7 +105,20 @@ async def drain_worker(
         )
     await worker_repo.set_draining(worker_id)
     updated = await worker_repo.get_by_id(worker_id)
-    return _to_response(updated or worker)
+    resp = _to_response(updated or worker)
+    try:
+        import asyncio
+        from src.api.routers.ws import ws_manager
+
+        asyncio.create_task(
+            ws_manager.broadcast(
+                "workers",
+                {"type": "worker.updated", "data": resp.model_dump(mode="json")},
+            )
+        )
+    except Exception:
+        pass
+    return resp
 
 
 @router.delete(
@@ -133,3 +146,15 @@ async def deregister_worker(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"Worker '{worker_id}' not found."
         )
+    try:
+        import asyncio
+        from src.api.routers.ws import ws_manager
+
+        asyncio.create_task(
+            ws_manager.broadcast(
+                "workers",
+                {"type": "worker.deregistered", "data": {"worker_id": worker_id}},
+            )
+        )
+    except Exception:
+        pass

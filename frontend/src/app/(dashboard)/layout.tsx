@@ -1,5 +1,6 @@
 import React from "react";
 import { Sidebar } from "@/components/layout/sidebar";
+import { LiveStatusIndicator } from "@/components/layout/live-status-indicator";
 
 export default function DashboardLayout({
   children,
@@ -16,10 +17,7 @@ export default function DashboardLayout({
             <span>/</span>
             <span className="capitalize">Live Operational View</span>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="h-2 w-2 rounded-full bg-emerald-500" />
-            <span className="text-xs font-mono text-muted-foreground">Backend Connected</span>
-          </div>
+          <LiveStatusIndicator />
         </header>
         <div className="p-8 flex-1 overflow-y-auto">{children}</div>
       </main>

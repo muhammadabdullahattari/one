@@ -86,7 +86,20 @@ async def create_queue(
         broker_backend=target_backend,
     )
     saved = await queue_repo.create_or_update_queue(queue)
-    return QueueResponse.model_validate(saved)
+    resp = QueueResponse.model_validate(saved)
+    try:
+        import asyncio
+        from src.api.routers.ws import ws_manager
+
+        asyncio.create_task(
+            ws_manager.broadcast(
+                "queues",
+                {"type": "queue.created", "data": resp.model_dump(mode="json")},
+            )
+        )
+    except Exception:
+        pass
+    return resp
 
 
 @router.get("/{name}", response_model=QueueResponse, summary="Get queue configuration details")
@@ -146,7 +159,20 @@ async def update_queue(
         created_at=existing.created_at,
     )
     saved = await queue_repo.create_or_update_queue(updated_queue)
-    return QueueResponse.model_validate(saved)
+    resp = QueueResponse.model_validate(saved)
+    try:
+        import asyncio
+        from src.api.routers.ws import ws_manager
+
+        asyncio.create_task(
+            ws_manager.broadcast(
+                "queues",
+                {"type": "queue.updated", "data": resp.model_dump(mode="json")},
+            )
+        )
+    except Exception:
+        pass
+    return resp
 
 
 @router.delete(
@@ -208,6 +234,19 @@ async def delete_queue(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"Queue '{name}' not found."
         )
+
+    try:
+        import asyncio
+        from src.api.routers.ws import ws_manager
+
+        asyncio.create_task(
+            ws_manager.broadcast(
+                "queues",
+                {"type": "queue.deleted", "data": {"queue_name": name}},
+            )
+        )
+    except Exception:
+        pass
 
 
 @router.get(

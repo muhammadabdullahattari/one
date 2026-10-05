@@ -14,6 +14,7 @@ import {
   useRetryTask,
 } from "@/lib/api-hooks";
 import { TaskStatusBadge } from "@/components/task/task-status-badge";
+import { useWebSocketSubscription } from "@/lib/use-websocket";
 import {
   Activity,
   Server,
@@ -24,10 +25,17 @@ import {
   XCircle,
   Radio,
   RefreshCw,
+  Wifi,
+  WifiOff,
 } from "lucide-react";
 
 export default function LiveConsolePage() {
   const [selectedQueue, setSelectedQueue] = useState<string | undefined>(undefined);
+  const { isConnected, isConnecting, lastEvent } = useWebSocketSubscription({
+    channel: "live",
+    autoInvalidate: true,
+  });
+
   const { data: tasksData, isLoading: tasksLoading, refetch: refetchTasks } = useTasks({
     queue: selectedQueue,
     limit: 50,
@@ -52,16 +60,33 @@ export default function LiveConsolePage() {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold tracking-tight text-foreground">Live Operational Console</h1>
-            <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 text-xs">
-              <Radio className="w-3 h-3 mr-1 animate-pulse" />
-              Flower Mode Active
-            </Badge>
+            {isConnected ? (
+              <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 text-xs">
+                <Radio className="w-3 h-3 mr-1 animate-pulse text-emerald-500" />
+                Live WebSocket Stream
+              </Badge>
+            ) : isConnecting ? (
+              <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/20 text-xs">
+                <Wifi className="w-3 h-3 mr-1 animate-spin text-amber-500" />
+                Connecting Stream...
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="bg-muted text-muted-foreground border-border text-xs">
+                <WifiOff className="w-3 h-3 mr-1" />
+                Polling Fallback
+              </Badge>
+            )}
           </div>
           <p className="text-sm text-muted-foreground mt-1">
             Real-time unified state of tasks, active worker assignments, and broker queues.
           </p>
         </div>
         <div className="flex items-center gap-3">
+          {lastEvent && (
+            <span className="text-xs font-mono text-muted-foreground bg-muted/50 px-2.5 py-1 rounded-md border border-border">
+              Last event: <span className="text-primary font-semibold">{lastEvent.type}</span>
+            </span>
+          )}
           <Button variant="outline" size="sm" onClick={handleRefreshAll} className="gap-2">
             <RefreshCw className="w-3.5 h-3.5" />
             Synchronize

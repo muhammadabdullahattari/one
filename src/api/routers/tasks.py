@@ -1,3 +1,4 @@
+import asyncio
 from typing import Annotated
 from uuid import UUID
 
@@ -10,6 +11,7 @@ from src.api.dependencies import (
     get_task_service,
     require_role,
 )
+from src.api.routers.ws import ws_manager
 from src.api.schemas.tasks import (
     TaskAttemptResponse,
     TaskCancelRequest,
@@ -62,7 +64,17 @@ async def submit_task(
         tenant_id=tenant_id,
         metadata=request.metadata,
     )
-    return TaskResponse.model_validate(task)
+    task_res = TaskResponse.model_validate(task)
+    try:
+        asyncio.create_task(
+            ws_manager.broadcast(
+                "tasks",
+                {"type": "task.created", "data": task_res.model_dump(mode="json")},
+            )
+        )
+    except Exception:
+        pass
+    return task_res
 
 
 @router.get("", response_model=TaskListResponse, summary="List tasks with filtering and pagination")
@@ -142,7 +154,17 @@ async def cancel_task(
     enforce_tenant_access(principal, task.tenant_id)
     reason = request.reason if request and request.reason else "User requested cancellation"
     cancelled = await task_service.cancel_task(task_id, reason=reason)
-    return TaskResponse.model_validate(cancelled)
+    cancelled_res = TaskResponse.model_validate(cancelled)
+    try:
+        asyncio.create_task(
+            ws_manager.broadcast(
+                "tasks",
+                {"type": "task.cancelled", "data": cancelled_res.model_dump(mode="json")},
+            )
+        )
+    except Exception:
+        pass
+    return cancelled_res
 
 
 @router.post(
@@ -164,7 +186,17 @@ async def retry_task(
     delay = request.delay_seconds if request else 0
     reset = request.reset_attempts if request else False
     retried = await task_service.retry_task(task_id, delay_seconds=delay, reset_attempts=reset)
-    return TaskResponse.model_validate(retried)
+    retried_res = TaskResponse.model_validate(retried)
+    try:
+        asyncio.create_task(
+            ws_manager.broadcast(
+                "tasks",
+                {"type": "task.retried", "data": retried_res.model_dump(mode="json")},
+            )
+        )
+    except Exception:
+        pass
+    return retried_res
 
 
 @router.get(

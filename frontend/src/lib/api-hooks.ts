@@ -14,6 +14,7 @@ import {
   QueueDepthPoint,
   WorkerUtilizationData,
   StatusDistributionData,
+  User,
 } from "@/types/api";
 
 // Query Keys
@@ -117,6 +118,61 @@ export function useQueueDepth(name: string) {
     queryFn: () => apiClient.get<QueueDepth>(`/queues/${name}/depth`),
     enabled: !!name,
     refetchInterval: 3000,
+  });
+}
+
+export function useCreateQueue() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      queue_name: string;
+      enabled?: boolean;
+      default_priority?: number;
+      max_concurrency?: number;
+      rate_limit_rps?: number;
+      broker_backend?: string;
+    }) => apiClient.post<QueueItem>("/queues", body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.queues() });
+    },
+  });
+}
+
+export function useUpdateQueue() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      queueName,
+      body,
+    }: {
+      queueName: string;
+      body: {
+        enabled?: boolean;
+        default_priority?: number;
+        max_concurrency?: number;
+        rate_limit_rps?: number;
+        broker_backend?: string;
+      };
+    }) => apiClient.put<QueueItem>(`/queues/${queueName}`, body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.queues() });
+    },
+  });
+}
+
+export function useDeleteQueue() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      queueName,
+      force = false,
+    }: {
+      queueName: string;
+      force?: boolean;
+    }) => apiClient.delete(`/queues/${queueName}${force ? "?force=true" : ""}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.queues() });
+    },
   });
 }
 
@@ -307,3 +363,27 @@ export function useAnalyticsStatusDistribution(queue?: string) {
     refetchInterval: 5000,
   });
 }
+
+// Authentication
+export function useCurrentUser() {
+  return useQuery({
+    queryKey: ["auth", "me"],
+    queryFn: () => apiClient.get<User>("/auth/me"),
+    retry: false,
+    staleTime: 60000,
+  });
+}
+
+export function useLogout() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiClient.post("/auth/logout"),
+    onSuccess: () => {
+      queryClient.clear();
+      if (typeof window !== "undefined") {
+        window.location.href = "/login";
+      }
+    },
+  });
+}
+

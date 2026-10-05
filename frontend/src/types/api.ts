@@ -77,6 +77,7 @@ export interface PaginatedResponse<T> {
 
 export interface QueueItem {
   queue_name: string;
+  tenant_id?: string;
   enabled: boolean;
   default_priority: number;
   max_concurrency: number;
@@ -94,6 +95,7 @@ export interface QueueDepth {
 
 export interface WorkerItem {
   worker_id: string;
+  tenant_id?: string;
   hostname: string;
   process_id: number;
   version: string;
@@ -126,6 +128,7 @@ export interface ScheduleItem {
 
 export interface DLQItem {
   dlq_id: string;
+  tenant_id?: string;
   task_id: string;
   final_attempt_id: string | null;
   queue?: string;
