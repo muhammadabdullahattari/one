@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -29,13 +30,17 @@ def _to_response(w: Worker) -> WorkerResponse:
         if isinstance(w.capabilities_json, list)
         else w.capabilities_json or {}
     )
+    now = datetime.now(UTC)
+    hb = w.last_heartbeat if w.last_heartbeat.tzinfo else w.last_heartbeat.replace(tzinfo=UTC)
+    is_offline = (now - hb).total_seconds() > 90
+    computed_status = "offline" if (is_offline and w.status == "active") else w.status
     return WorkerResponse(
         worker_id=w.worker_id,
         tenant_id=w.tenant_id,
         hostname=w.hostname,
         process_id=w.process_id,
         version=w.version,
-        status=w.status,
+        status=computed_status,
         queues=queues,
         concurrency=w.concurrency,
         active_task_count=w.active_slots,

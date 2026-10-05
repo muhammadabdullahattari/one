@@ -142,19 +142,20 @@ export default function TasksPage() {
             <div className="col-span-2 text-right">DETAILS</div>
           </div>
 
-          {isLoading ? (
-            <div className="p-12 text-center text-sm text-muted-foreground">
-              Virtualizing and fetching backlog rows...
-            </div>
-          ) : tasks.length === 0 ? (
-            <div className="p-12 text-center text-sm text-muted-foreground">
-              No tasks match the active filters.
-            </div>
-          ) : (
-            <div
-              ref={parentRef}
-              className="h-[520px] overflow-auto relative contain-strict"
-            >
+          <div
+            ref={parentRef}
+            className="h-[520px] overflow-auto relative contain-strict"
+          >
+            {isLoading ? (
+              <div className="p-12 text-center text-sm text-muted-foreground flex flex-col items-center justify-center h-full gap-2">
+                <RefreshCw className="w-5 h-5 animate-spin text-primary" />
+                <span>Virtualizing and fetching backlog rows...</span>
+              </div>
+            ) : tasks.length === 0 ? (
+              <div className="p-12 text-center text-sm text-muted-foreground flex items-center justify-center h-full">
+                No tasks match the active filters.
+              </div>
+            ) : (
               <div
                 style={{
                   height: `${rowVirtualizer.getTotalSize()}px`,
@@ -206,8 +207,8 @@ export default function TasksPage() {
                   );
                 })}
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </CardContent>
       </Card>
     </div>

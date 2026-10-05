@@ -68,23 +68,30 @@ export function Sidebar() {
               key={item.href}
               href={item.href}
               className={cn(
-                "flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-all group",
+                "flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-all group border border-transparent",
                 isActive
-                  ? "bg-primary text-primary-foreground shadow-sm"
-                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                  ? "bg-primary text-primary-foreground shadow-sm hover:bg-primary-foreground hover:text-primary hover:border-primary"
+                  : "text-muted-foreground hover:bg-primary hover:text-primary-foreground"
               )}
             >
               <div className="flex items-center gap-3">
-                <Icon className={cn("w-4 h-4", isActive ? "text-primary-foreground" : "text-muted-foreground group-hover:text-accent-foreground")} />
+                <Icon
+                  className={cn(
+                    "w-4 h-4 transition-colors",
+                    isActive
+                      ? "text-primary-foreground group-hover:text-primary"
+                      : "text-muted-foreground group-hover:text-primary-foreground"
+                  )}
+                />
                 <span>{item.label}</span>
               </div>
               {item.badge && (
                 <span
                   className={cn(
-                    "text-[10px] uppercase font-mono px-1.5 py-0.5 rounded-full font-semibold",
+                    "text-[10px] uppercase font-mono px-1.5 py-0.5 rounded-full font-semibold transition-colors",
                     isActive
-                      ? "bg-primary-foreground/20 text-primary-foreground"
-                      : "bg-muted text-muted-foreground"
+                      ? "bg-primary-foreground/20 text-primary-foreground group-hover:bg-primary/20 group-hover:text-primary"
+                      : "bg-muted text-muted-foreground group-hover:bg-primary-foreground/20 group-hover:text-primary-foreground"
                   )}
                 >
                   {item.badge}
@@ -120,9 +127,9 @@ export function Sidebar() {
         </div>
         <button
           onClick={handleLogout}
-          className="flex items-center gap-2.5 w-full px-3 py-2 text-xs font-medium text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
+          className="flex items-center gap-2.5 w-full px-3 py-2 text-xs font-medium text-destructive hover:bg-destructive hover:text-destructive-foreground border border-transparent hover:border-destructive rounded-lg transition-all cursor-pointer group"
         >
-          <LogOut className="w-4 h-4" />
+          <LogOut className="w-4 h-4 transition-colors group-hover:text-destructive-foreground" />
           <span>Sign Out</span>
         </button>
       </div>

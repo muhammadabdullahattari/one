@@ -9,15 +9,16 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "bg-primary text-primary-foreground shadow hover:bg-primary/85 hover:shadow-md hover:brightness-105 active:scale-[0.98]",
+          "bg-primary text-primary-foreground border border-transparent shadow hover:bg-primary-foreground hover:text-primary hover:border-primary active:scale-[0.98]",
         destructive:
-          "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/85 hover:shadow-md active:scale-[0.98]",
+          "bg-destructive text-destructive-foreground border border-transparent shadow-sm hover:bg-destructive-foreground hover:text-destructive hover:border-destructive active:scale-[0.98]",
         outline:
-          "border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground hover:border-primary/40 active:scale-[0.98]",
+          "border border-input bg-background text-foreground shadow-sm hover:bg-foreground hover:text-background hover:border-foreground active:scale-[0.98]",
         secondary:
-          "bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80 hover:shadow-sm active:scale-[0.98]",
-        ghost: "hover:bg-accent hover:text-accent-foreground active:scale-[0.98]",
-        link: "text-primary underline-offset-4 hover:underline",
+          "bg-secondary text-secondary-foreground border border-transparent shadow-sm hover:bg-secondary-foreground hover:text-secondary hover:border-secondary-foreground active:scale-[0.98]",
+        ghost:
+          "bg-transparent text-foreground border border-transparent hover:bg-foreground hover:text-background hover:border-foreground active:scale-[0.98]",
+        link: "text-primary underline-offset-4 hover:bg-primary hover:text-primary-foreground hover:no-underline rounded px-1.5 py-0.5",
       },
       size: {
         default: "h-9 px-4 py-2",

@@ -20,7 +20,7 @@ def get_async_engine() -> AsyncEngine:
     global _async_engine, _async_session_factory
     if _async_engine is None:
         settings = get_settings()
-        if settings.is_test or settings.is_development:
+        if settings.is_test:
             engine_kwargs: dict[str, Any] = {
                 "echo": False,
                 "future": True,

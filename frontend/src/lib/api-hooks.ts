@@ -52,7 +52,7 @@ export function useTasks(params: {
       apiClient.get<PaginatedResponse<Task>>(
         `/tasks?${queryParams.toString()}`
       ),
-    refetchInterval: 3000,
+    refetchInterval: 8000,
   });
 }
 
@@ -61,7 +61,7 @@ export function useTaskDetail(taskId: string) {
     queryKey: queryKeys.taskDetail(taskId),
     queryFn: () => apiClient.get<TaskDetail>(`/tasks/${taskId}`),
     enabled: !!taskId,
-    refetchInterval: 3000,
+    refetchInterval: 8000,
   });
 }
 
@@ -110,7 +110,7 @@ export function useQueues() {
   return useQuery({
     queryKey: queryKeys.queues(),
     queryFn: () => apiClient.get<PaginatedResponse<QueueItem>>("/queues"),
-    refetchInterval: 5000,
+    refetchInterval: 10000,
   });
 }
 
@@ -119,7 +119,7 @@ export function useQueueDepth(name: string) {
     queryKey: queryKeys.queueDepth(name),
     queryFn: () => apiClient.get<QueueDepth>(`/queues/${name}/depth`),
     enabled: !!name,
-    refetchInterval: 3000,
+    refetchInterval: 8000,
   });
 }
 
@@ -184,7 +184,7 @@ export function useWorkers(status?: string) {
   return useQuery({
     queryKey: queryKeys.workers(status),
     queryFn: () => apiClient.get<PaginatedResponse<WorkerItem>>(url),
-    refetchInterval: 4000,
+    refetchInterval: 8000,
   });
 }
 
@@ -205,7 +205,7 @@ export function useSchedules(enabledOnly = false) {
   return useQuery({
     queryKey: [...queryKeys.schedules(), enabledOnly],
     queryFn: () => apiClient.get<PaginatedResponse<ScheduleItem>>(url),
-    refetchInterval: 5000,
+    refetchInterval: 10000,
   });
 }
 
@@ -278,7 +278,7 @@ export function useDLQ(limit = 50, offset = 0) {
   return useQuery({
     queryKey: [...queryKeys.dlq(), limit, offset],
     queryFn: () => apiClient.get<PaginatedResponse<DLQItem>>(`/dlq?limit=${limit}&offset=${offset}`),
-    refetchInterval: 5000,
+    refetchInterval: 10000,
   });
 }
 
@@ -324,7 +324,7 @@ export function useAnalyticsThroughput(hours = 24) {
     queryKey: queryKeys.throughput(hours),
     queryFn: () =>
       apiClient.get<ThroughputData>(`/analytics/throughput?hours=${hours}`),
-    refetchInterval: 5000,
+    refetchInterval: 15000,
   });
 }
 
@@ -333,7 +333,7 @@ export function useAnalyticsLatency(queue?: string) {
   return useQuery({
     queryKey: queryKeys.latency(queue),
     queryFn: () => apiClient.get<LatencyData>(url),
-    refetchInterval: 5000,
+    refetchInterval: 15000,
   });
 }
 
@@ -342,7 +342,7 @@ export function useAnalyticsQueueDepth() {
     queryKey: queryKeys.queueDepthTrend(),
     queryFn: () =>
       apiClient.get<{ queues: QueueDepthPoint[] }>("/analytics/queue-depth"),
-    refetchInterval: 5000,
+    refetchInterval: 15000,
   });
 }
 
@@ -351,7 +351,7 @@ export function useAnalyticsWorkerUtilization() {
     queryKey: queryKeys.workerUtilization(),
     queryFn: () =>
       apiClient.get<WorkerUtilizationData>("/analytics/worker-utilization"),
-    refetchInterval: 5000,
+    refetchInterval: 15000,
   });
 }
 
@@ -362,7 +362,7 @@ export function useAnalyticsStatusDistribution(queue?: string) {
   return useQuery({
     queryKey: queryKeys.statusDistribution(queue),
     queryFn: () => apiClient.get<StatusDistributionData>(url),
-    refetchInterval: 5000,
+    refetchInterval: 15000,
   });
 }
 

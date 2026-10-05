@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import Link from "next/link";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -45,50 +45,56 @@ export default function DashboardPage() {
     new Set(["default", ...(queuesData?.items.map((q) => q.queue_name) || [])])
   );
 
-  const activeWorkersCount =
-    workersData?.items.filter((w) => w.status === "active").length || 0;
+  const activeWorkers = workersData?.items.filter((w) => w.status === "active") || [];
+  const activeWorkersCount = activeWorkers.length;
   const totalBusySlots =
-    workersData?.items.reduce((acc, w) => acc + (w.active_task_count || 0), 0) || 0;
+    activeWorkers.reduce((acc, w) => acc + (w.active_task_count || 0), 0);
   const totalCapacitySlots =
-    workersData?.items.reduce((acc, w) => acc + (w.concurrency || 0), 0) || 0;
+    activeWorkers.reduce((acc, w) => acc + (w.concurrency || 0), 0);
 
   const totalQueues = queuesData?.items.length || 0;
   const dlqCount = dlqData?.total || 0;
 
-  const chartOptions = {
-    tooltip: { trigger: "axis" },
-    legend: { data: ["Incoming Tasks/s", "Outgoing Tasks/s"], textStyle: { color: "#64748b" } },
-    grid: { left: "3%", right: "4%", bottom: "3%", containLabel: true },
-    xAxis: {
-      type: "category",
-      boundaryGap: false,
-      data: throughputData?.points.map((p) => new Date(p.timestamp).toLocaleTimeString()) || [],
-      axisLine: { lineStyle: { color: "#e2e8f0" } },
-    },
-    yAxis: {
-      type: "value",
-      axisLine: { lineStyle: { color: "#e2e8f0" } },
-      splitLine: { lineStyle: { color: "#f1f5f9" } },
-    },
-    series: [
-      {
-        name: "Incoming Tasks/s",
-        type: "line",
-        smooth: true,
-        data: throughputData?.points.map((p) => p.incoming_rate) || [],
-        itemStyle: { color: "#3b82f6" },
-        areaStyle: { opacity: 0.1, color: "#3b82f6" },
+  const chartOptions = useMemo(
+    () => ({
+      tooltip: { trigger: "axis" },
+      legend: { data: ["Incoming Tasks/s", "Outgoing Tasks/s"], textStyle: { color: "#64748b" } },
+      grid: { left: "3%", right: "4%", bottom: "3%", containLabel: true },
+      xAxis: {
+        type: "category",
+        boundaryGap: false,
+        data:
+          throughputData?.points.map((p) =>
+            new Date(p.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+          ) || [],
+        axisLine: { lineStyle: { color: "#e2e8f0" } },
       },
-      {
-        name: "Outgoing Tasks/s",
-        type: "line",
-        smooth: true,
-        data: throughputData?.points.map((p) => p.outgoing_rate) || [],
-        itemStyle: { color: "#10b981" },
-        areaStyle: { opacity: 0.1, color: "#10b981" },
+      yAxis: {
+        type: "value",
+        axisLine: { lineStyle: { color: "#e2e8f0" } },
+        splitLine: { lineStyle: { color: "#f1f5f9" } },
       },
-    ],
-  };
+      series: [
+        {
+          name: "Incoming Tasks/s",
+          type: "line",
+          smooth: true,
+          data: throughputData?.points.map((p) => p.incoming_rate) || [],
+          itemStyle: { color: "#3b82f6" },
+          areaStyle: { opacity: 0.1, color: "#3b82f6" },
+        },
+        {
+          name: "Outgoing Tasks/s",
+          type: "line",
+          smooth: true,
+          data: throughputData?.points.map((p) => p.outgoing_rate) || [],
+          itemStyle: { color: "#10b981" },
+          areaStyle: { opacity: 0.1, color: "#10b981" },
+        },
+      ],
+    }),
+    [throughputData]
+  );
 
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -50,11 +50,8 @@ export function BaseChart({
   useEffect(() => {
     if (!containerRef.current) return;
 
-    if (!chartInstanceRef.current) {
-      chartInstanceRef.current = echarts.init(containerRef.current);
-    }
-
-    const chart = chartInstanceRef.current;
+    const chart = echarts.init(containerRef.current);
+    chartInstanceRef.current = chart;
     chart.setOption(options, { notMerge: false });
 
     if (loading) {
@@ -64,8 +61,6 @@ export function BaseChart({
         textColor: "#64748b",
         maskColor: "rgba(255, 255, 255, 0.6)",
       });
-    } else {
-      chart.hideLoading();
     }
 
     const resizeObserver = new ResizeObserver(() => {
@@ -75,12 +70,29 @@ export function BaseChart({
 
     return () => {
       resizeObserver.disconnect();
-      if (chartInstanceRef.current) {
-        chartInstanceRef.current.dispose();
-        chartInstanceRef.current = null;
-      }
+      chart.dispose();
+      chartInstanceRef.current = null;
     };
-  }, [options, loading]);
+  }, []); // Run on mount & unmount only
+
+  useEffect(() => {
+    if (!chartInstanceRef.current) return;
+    chartInstanceRef.current.setOption(options, { notMerge: false });
+  }, [options]);
+
+  useEffect(() => {
+    if (!chartInstanceRef.current) return;
+    if (loading) {
+      chartInstanceRef.current.showLoading({
+        text: "Loading real-time telemetry...",
+        color: "#3b82f6",
+        textColor: "#64748b",
+        maskColor: "rgba(255, 255, 255, 0.6)",
+      });
+    } else {
+      chartInstanceRef.current.hideLoading();
+    }
+  }, [loading]);
 
   return (
     <div

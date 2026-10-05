@@ -64,32 +64,72 @@ async def get_throughput(
 ) -> ThroughputResponse:
     now = datetime.now(UTC)
     cutoff = now - timedelta(hours=hours)
-    stmt = select(
-        func.count(TaskModel.task_id).label("total_created"),
-        func.count(TaskModel.task_id)
-        .filter(
-            TaskModel.status.in_(
-                [TaskStatus.SUCCEEDED.value, TaskStatus.FAILED.value, TaskStatus.DEAD.value]
-            )
-        )
-        .label("total_completed"),
-    ).where(TaskModel.created_at >= cutoff)
     tenant = _effective_tenant(principal)
+
+    stmt = select(TaskModel.created_at, TaskModel.status).where(TaskModel.created_at >= cutoff)
     if tenant:
         stmt = stmt.where(TaskModel.tenant_id == tenant)
     res = await session.execute(stmt)
-    row = res.one()
-    total_in = int(row.total_created or 0)
-    total_out = int(row.total_completed or 0)
-    total_seconds = float(hours * 3600)
-    in_tps = round(total_in / total_seconds, 2) if total_seconds > 0 else 0.0
-    out_tps = round(total_out / total_seconds, 2) if total_seconds > 0 else 0.0
-    points = [
-        ThroughputPoint(timestamp=cutoff, incoming_rate=in_tps, outgoing_rate=out_tps),
-        ThroughputPoint(timestamp=now, incoming_rate=in_tps, outgoing_rate=out_tps),
-    ]
+    rows = res.all()
+
+    bucket_count = 12 if hours <= 2 else min(hours, 24)
+    bucket_seconds = (hours * 3600) / bucket_count
+
+    bucket_in = [0] * bucket_count
+    bucket_out = [0] * bucket_count
+    terminal_statuses = {
+        TaskStatus.SUCCEEDED.value,
+        TaskStatus.FAILED.value,
+        TaskStatus.DEAD.value,
+    }
+
+    recent_cutoff = now - timedelta(minutes=15)
+    recent_in = 0
+    recent_out = 0
+
+    for row in rows:
+        created_at = row[0]
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=UTC)
+        offset_sec = (created_at - cutoff).total_seconds()
+        idx = int(offset_sec // bucket_seconds)
+        if 0 <= idx < bucket_count:
+            bucket_in[idx] += 1
+            if str(row[1]) in terminal_statuses:
+                bucket_out[idx] += 1
+        elif idx >= bucket_count:
+            bucket_in[-1] += 1
+            if str(row[1]) in terminal_statuses:
+                bucket_out[-1] += 1
+
+        if created_at >= recent_cutoff:
+            recent_in += 1
+            if str(row[1]) in terminal_statuses:
+                recent_out += 1
+
+    points: list[ThroughputPoint] = []
+    for i in range(bucket_count):
+        pt_time = cutoff + timedelta(seconds=(i + 1) * bucket_seconds)
+        rate_in = round(bucket_in[i] / bucket_seconds, 2)
+        rate_out = round(bucket_out[i] / bucket_seconds, 2)
+        if bucket_in[i] > 0 and rate_in == 0.0:
+            rate_in = round(bucket_in[i] / bucket_seconds, 3)
+        if bucket_out[i] > 0 and rate_out == 0.0:
+            rate_out = round(bucket_out[i] / bucket_seconds, 3)
+        points.append(
+            ThroughputPoint(timestamp=pt_time, incoming_rate=rate_in, outgoing_rate=rate_out)
+        )
+
+    # Current rate based on recent 15 minutes window, or overall window
+    current_in_tps = (
+        round(recent_in / 900.0, 2)
+        if recent_in > 0
+        else (round(len(rows) / (hours * 3600), 2) if rows else 0.0)
+    )
+    current_out_tps = round(recent_out / 900.0, 2) if recent_out > 0 else 0.0
+
     return ThroughputResponse(
-        points=points, current_incoming_tps=in_tps, current_outgoing_tps=out_tps
+        points=points, current_incoming_tps=current_in_tps, current_outgoing_tps=current_out_tps
     )
 
 

@@ -41,7 +41,11 @@ export function useWebSocketSubscription<T = unknown>({
     }
     if (typeof window !== "undefined") {
       const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-      return `${proto}//${window.location.hostname}:8000/api/v1/ws/${channel}`;
+      const host =
+        window.location.hostname === "localhost"
+          ? "127.0.0.1"
+          : window.location.hostname;
+      return `${proto}//${host}:8000/api/v1/ws/${channel}`;
     }
     const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api/v1";
     const wsBase = apiBase.replace(/^http:/, "ws:").replace(/^https:/, "wss:");
