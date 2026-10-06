@@ -24,7 +24,10 @@ import {
   useDeleteSchedule,
   useTriggerSchedule,
   useQueues,
+  queryKeys,
 } from "@/lib/api-hooks";
+import { useQueryClient } from "@tanstack/react-query";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ScheduleItem } from "@/types/api";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -135,9 +138,12 @@ function getHumanReadableCron(cron: string, tz: string): string {
 }
 
 export default function SchedulesPage() {
+  const queryClient = useQueryClient();
   const [enabledOnly, setEnabledOnly] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedSchedule, setSelectedSchedule] = useState<ScheduleItem | null>(null);
+  const [scheduleToDelete, setScheduleToDelete] = useState<ScheduleItem | null>(null);
+  const [deletingSchedule, setDeletingSchedule] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(
     null
   );
@@ -305,17 +311,32 @@ export default function SchedulesPage() {
     }
   };
 
-  const handleDelete = async (schedule: ScheduleItem) => {
-    if (!confirm(`Are you sure you want to permanently delete schedule for '${schedule.task_type}'?`)) {
-      return;
-    }
+  const confirmDeleteSchedule = async () => {
+    if (!scheduleToDelete) return;
+    const schedule = scheduleToDelete;
+    setDeletingSchedule(true);
     setFeedback(null);
     try {
+      queryClient.setQueryData([...queryKeys.schedules(), enabledOnly], (old: any) => {
+        if (!old?.items) return old;
+        return {
+          ...old,
+          items: old.items.filter((s: ScheduleItem) => s.schedule_id !== schedule.schedule_id),
+          total: Math.max(0, (old.total ?? old.items.length) - 1),
+        };
+      });
       await deleteSchedule.mutateAsync(schedule.schedule_id);
-      setFeedback({ type: "success", message: "Schedule deleted successfully." });
+      setFeedback({
+        type: "success",
+        message: `Schedule for '${schedule.task_type}' deleted successfully.`,
+      });
     } catch (err: unknown) {
+      queryClient.invalidateQueries({ queryKey: ["schedules"] });
       const msg = err instanceof Error ? err.message : "Failed to delete schedule";
       setFeedback({ type: "error", message: msg });
+    } finally {
+      setDeletingSchedule(false);
+      setScheduleToDelete(null);
     }
   };
 
@@ -401,25 +422,25 @@ export default function SchedulesPage() {
       {/* Filters bar */}
       <div className="flex items-center justify-between bg-card p-3 rounded-lg border border-border">
         <div className="flex items-center gap-3">
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
             Filter:
           </span>
           <button
             onClick={() => setEnabledOnly(false)}
-            className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+            className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
               !enabledOnly
-                ? "bg-primary text-primary-foreground"
-                : "bg-muted text-muted-foreground hover:bg-muted/80"
+                ? "border-2 border-foreground bg-foreground text-background shadow-sm ring-2 ring-foreground/20"
+                : "border border-border bg-card text-muted-foreground hover:bg-muted/50 hover:text-foreground"
             }`}
           >
             All Schedules ({schedulesData?.total ?? 0})
           </button>
           <button
             onClick={() => setEnabledOnly(true)}
-            className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+            className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
               enabledOnly
-                ? "bg-primary text-primary-foreground"
-                : "bg-muted text-muted-foreground hover:bg-muted/80"
+                ? "border-2 border-foreground bg-foreground text-background shadow-sm ring-2 ring-foreground/20"
+                : "border border-border bg-card text-muted-foreground hover:bg-muted/50 hover:text-foreground"
             }`}
           >
             Active Only
@@ -556,7 +577,7 @@ export default function SchedulesPage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => handleDelete(schedule)}
+                    onClick={() => setScheduleToDelete(schedule)}
                     disabled={deleteSchedule.isPending}
                     title="Delete schedule definition"
                     className="text-destructive hover:bg-destructive/10 border-destructive/30"
@@ -1144,6 +1165,17 @@ export default function SchedulesPage() {
           </Card>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!scheduleToDelete}
+        onOpenChange={(open) => !open && setScheduleToDelete(null)}
+        title="Delete Schedule"
+        description={`Are you sure you want to permanently delete schedule for "${scheduleToDelete?.task_type}"? It will no longer trigger recurring tasks.`}
+        confirmLabel="Delete Schedule"
+        variant="destructive"
+        loading={deletingSchedule}
+        onConfirm={confirmDeleteSchedule}
+      />
     </div>
   );
 }

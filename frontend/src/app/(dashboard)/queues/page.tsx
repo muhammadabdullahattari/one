@@ -8,7 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { useQueues } from "@/lib/api-hooks";
 import { apiClient } from "@/lib/api-client";
 import { useQueryClient } from "@tanstack/react-query";
-import { Layers, Plus, Trash2, Gauge, ShieldAlert } from "lucide-react";
+import { Layers, Plus, Trash2, Gauge, ShieldAlert, AlertCircle } from "lucide-react";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 export default function QueuesPage() {
   const queryClient = useQueryClient();
@@ -20,6 +21,9 @@ export default function QueuesPage() {
   const [rateLimit, setRateLimit] = useState(100);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,13 +46,28 @@ export default function QueuesPage() {
     }
   };
 
-  const handleDelete = async (name: string) => {
-    if (!confirm(`Are you sure you want to delete queue '${name}'?`)) return;
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    const name = deleteTarget;
+    setDeleting(true);
+    setDeleteError(null);
     try {
+      queryClient.setQueryData(["queues"], (old: any) => {
+        if (!old?.items) return old;
+        return {
+          ...old,
+          items: old.items.filter((q: any) => q.queue_name !== name),
+          total: Math.max(0, (old.total ?? old.items.length) - 1),
+        };
+      });
       await apiClient.delete(`/queues/${name}?force=true`);
       queryClient.invalidateQueries({ queryKey: ["queues"] });
     } catch (err: any) {
-      alert(`Error deleting queue: ${err.message}`);
+      queryClient.invalidateQueries({ queryKey: ["queues"] });
+      setDeleteError(err.message || "Failed to delete queue.");
+    } finally {
+      setDeleting(false);
+      setDeleteTarget(null);
     }
   };
 
@@ -66,6 +85,18 @@ export default function QueuesPage() {
           Create Queue
         </Button>
       </div>
+
+      {deleteError && (
+        <div className="p-3 bg-destructive/10 border border-destructive/20 text-destructive text-xs rounded-lg flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{deleteError}</span>
+          </div>
+          <button onClick={() => setDeleteError(null)} className="text-muted-foreground hover:text-foreground">
+            ✕
+          </button>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {isLoading ? (
@@ -121,7 +152,7 @@ export default function QueuesPage() {
                     variant="outline"
                     size="sm"
                     className="w-full text-destructive hover:bg-destructive/10 text-xs gap-1.5"
-                    onClick={() => handleDelete(q.queue_name)}
+                    onClick={() => setDeleteTarget(q.queue_name)}
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                     Delete Queue
@@ -199,6 +230,17 @@ export default function QueuesPage() {
           </Card>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title="Delete Queue"
+        description={`Are you sure you want to permanently delete queue '${deleteTarget}'? This action cannot be undone.`}
+        confirmLabel="Delete Queue"
+        variant="destructive"
+        loading={deleting}
+        onConfirm={confirmDelete}
+      />
     </div>
   );
 }

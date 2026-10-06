@@ -246,16 +246,18 @@ export default function MetricsPage() {
     },
     legend: {
       orient: "vertical",
-      right: 10,
-      top: "center",
-      textStyle: { color: "#94a3b8", fontSize: 11 },
+      right: 8,
+      top: "middle",
+      itemWidth: 10,
+      itemHeight: 10,
+      textStyle: { color: "#94a3b8", fontSize: 10 },
     },
     series: [
       {
         name: "Status Distribution",
         type: "pie",
-        radius: ["48%", "72%"],
-        center: ["40%", "50%"],
+        radius: ["36%", "58%"],
+        center: ["30%", "50%"],
         avoidLabelOverlap: false,
         itemStyle: {
           borderRadius: 4,

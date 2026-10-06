@@ -22,16 +22,22 @@ import {
   useBulkReplayDLQ,
   useDiscardDLQ,
 } from "@/lib/api-hooks";
+import { useQueryClient } from "@tanstack/react-query";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DLQItem } from "@/types/api";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
 export default function DLQPage() {
+  const queryClient = useQueryClient();
   const [pageLimit] = useState(25);
   const [pageOffset, setPageOffset] = useState(0);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [detailItem, setDetailItem] = useState<DLQItem | null>(null);
+  const [discardTarget, setDiscardTarget] = useState<DLQItem | null>(null);
+  const [confirmReplayAllOpen, setConfirmReplayAllOpen] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(
     null
   );
@@ -61,6 +67,14 @@ export default function DLQPage() {
   const handleSingleReplay = async (item: DLQItem) => {
     setFeedback(null);
     try {
+      queryClient.setQueriesData({ queryKey: ["dlq"] }, (old: any) => {
+        if (!old?.items) return old;
+        return {
+          ...old,
+          items: old.items.filter((entry: DLQItem) => entry.dlq_id !== item.dlq_id),
+          total: Math.max(0, (old.total ?? old.items.length) - 1),
+        };
+      });
       await replayDLQ.mutateAsync(item.dlq_id);
       setSelectedIds((prev) => prev.filter((id) => id !== item.dlq_id));
       setFeedback({
@@ -68,6 +82,7 @@ export default function DLQPage() {
         message: `Task ${item.task_id} successfully replayed into active queue.`,
       });
     } catch (err: unknown) {
+      queryClient.invalidateQueries({ queryKey: ["dlq"] });
       const msg = err instanceof Error ? err.message : "Failed to replay task";
       setFeedback({ type: "error", message: msg });
     }
@@ -76,25 +91,36 @@ export default function DLQPage() {
   const handleBulkReplaySelected = async () => {
     if (selectedIds.length === 0) return;
     setFeedback(null);
+    const toReplay = [...selectedIds];
     try {
-      const res = await bulkReplayDLQ.mutateAsync(selectedIds);
+      queryClient.setQueriesData({ queryKey: ["dlq"] }, (old: any) => {
+        if (!old?.items) return old;
+        return {
+          ...old,
+          items: old.items.filter((entry: DLQItem) => !toReplay.includes(entry.dlq_id)),
+          total: Math.max(0, (old.total ?? old.items.length) - toReplay.length),
+        };
+      });
       setSelectedIds([]);
+      const res = await bulkReplayDLQ.mutateAsync(toReplay);
       setFeedback({
         type: "success",
         message: `Successfully replayed ${res.replayed_count} tasks back into active queues.`,
       });
     } catch (err: unknown) {
+      queryClient.invalidateQueries({ queryKey: ["dlq"] });
       const msg = err instanceof Error ? err.message : "Failed to bulk replay tasks";
       setFeedback({ type: "error", message: msg });
     }
   };
 
-  const handleBulkReplayAll = async () => {
-    if (!confirm(`Are you sure you want to replay up to 100 dead-lettered tasks?`)) return;
+  const confirmBulkReplayAll = async () => {
+    setActionLoading(true);
     setFeedback(null);
     try {
       const res = await bulkReplayDLQ.mutateAsync(undefined);
       setSelectedIds([]);
+      queryClient.invalidateQueries({ queryKey: ["dlq"] });
       setFeedback({
         type: "success",
         message: `Successfully replayed ${res.replayed_count} dead tasks back into queues.`,
@@ -102,13 +128,26 @@ export default function DLQPage() {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to bulk replay tasks";
       setFeedback({ type: "error", message: msg });
+    } finally {
+      setActionLoading(false);
+      setConfirmReplayAllOpen(false);
     }
   };
 
-  const handleDiscard = async (item: DLQItem) => {
-    if (!confirm(`Permanently discard DLQ entry for task ${item.task_id}?`)) return;
+  const confirmDiscard = async () => {
+    if (!discardTarget) return;
+    const item = discardTarget;
+    setActionLoading(true);
     setFeedback(null);
     try {
+      queryClient.setQueriesData({ queryKey: ["dlq"] }, (old: any) => {
+        if (!old?.items) return old;
+        return {
+          ...old,
+          items: old.items.filter((entry: DLQItem) => entry.dlq_id !== item.dlq_id),
+          total: Math.max(0, (old.total ?? old.items.length) - 1),
+        };
+      });
       await discardDLQ.mutateAsync(item.dlq_id);
       setSelectedIds((prev) => prev.filter((id) => id !== item.dlq_id));
       if (detailItem?.dlq_id === item.dlq_id) setDetailItem(null);
@@ -117,8 +156,12 @@ export default function DLQPage() {
         message: "DLQ entry discarded.",
       });
     } catch (err: unknown) {
+      queryClient.invalidateQueries({ queryKey: ["dlq"] });
       const msg = err instanceof Error ? err.message : "Failed to discard DLQ entry";
       setFeedback({ type: "error", message: msg });
+    } finally {
+      setActionLoading(false);
+      setDiscardTarget(null);
     }
   };
 
@@ -164,7 +207,7 @@ export default function DLQPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={handleBulkReplayAll}
+              onClick={() => setConfirmReplayAllOpen(true)}
               disabled={bulkReplayDLQ.isPending}
               className="gap-1.5 text-amber-400 border-amber-500/30 hover:bg-amber-500/10"
             >
@@ -381,7 +424,7 @@ export default function DLQPage() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => handleDiscard(item)}
+                            onClick={() => setDiscardTarget(item)}
                             disabled={discardDLQ.isPending}
                             title="Permanently remove from DLQ"
                             className="h-7 px-2 text-xs text-destructive hover:bg-destructive/10"
@@ -502,7 +545,7 @@ export default function DLQPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => handleDiscard(detailItem)}
+                  onClick={() => setDiscardTarget(detailItem)}
                   className="text-destructive hover:bg-destructive/10 border-destructive/30"
                 >
                   <Trash2 className="h-3.5 w-3.5 mr-1" />
@@ -534,6 +577,28 @@ export default function DLQPage() {
           </Card>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!discardTarget}
+        onOpenChange={(open) => !open && setDiscardTarget(null)}
+        title="Discard DLQ Entry"
+        description={`Permanently discard DLQ entry for task "${discardTarget?.task_id}"? This item will be removed from the dead letter repository.`}
+        confirmLabel="Discard Entry"
+        variant="destructive"
+        loading={actionLoading}
+        onConfirm={confirmDiscard}
+      />
+
+      <ConfirmDialog
+        open={confirmReplayAllOpen}
+        onOpenChange={setConfirmReplayAllOpen}
+        title="Replay Dead Tasks"
+        description="Are you sure you want to replay up to 100 dead-lettered tasks back into their original active queues?"
+        confirmLabel="Replay Tasks"
+        variant="default"
+        loading={actionLoading}
+        onConfirm={confirmBulkReplayAll}
+      />
     </div>
   );
 }

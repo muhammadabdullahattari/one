@@ -58,8 +58,13 @@ export default function DashboardPage() {
   const chartOptions = useMemo(
     () => ({
       tooltip: { trigger: "axis" },
-      legend: { data: ["Incoming Tasks/s", "Outgoing Tasks/s"], textStyle: { color: "#64748b" } },
-      grid: { left: "3%", right: "4%", bottom: "3%", containLabel: true },
+      legend: {
+        top: 0,
+        right: 10,
+        data: ["Incoming Tasks/s", "Outgoing Tasks/s"],
+        textStyle: { color: "#64748b", fontSize: 11 },
+      },
+      grid: { left: "3%", right: "4%", top: 35, bottom: "5%", containLabel: true },
       xAxis: {
         type: "category",
         boundaryGap: false,

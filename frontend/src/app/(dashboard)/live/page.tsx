@@ -193,8 +193,10 @@ export default function LiveConsolePage() {
                       onClick={() =>
                         setSelectedQueue(isFiltered ? undefined : q.queue_name)
                       }
-                      className={`py-2.5 flex items-center justify-between text-xs cursor-pointer rounded px-2 transition-colors ${
-                        isFiltered ? "bg-accent" : "hover:bg-muted/50"
+                      className={`py-2.5 flex items-center justify-between text-xs cursor-pointer rounded-md px-2.5 transition-all ${
+                        isFiltered
+                          ? "border-2 border-foreground bg-accent font-medium shadow-sm ring-1 ring-foreground/20"
+                          : "border border-transparent hover:bg-muted/50"
                       }`}
                     >
                       <div className="space-y-0.5">

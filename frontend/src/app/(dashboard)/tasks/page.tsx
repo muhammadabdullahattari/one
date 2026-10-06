@@ -49,11 +49,44 @@ export default function TasksPage() {
         </Button>
       </div>
 
-      <Card className="p-4">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <Card className="p-4 space-y-4">
+        {/* Quick status filter pills */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mr-1">
+            Status:
+          </span>
+          {[
+            { id: "", label: "All Tasks" },
+            { id: "RUNNING", label: "Running" },
+            { id: "QUEUED", label: "Queued" },
+            { id: "SUCCEEDED", label: "Succeeded" },
+            { id: "FAILED", label: "Failed" },
+            { id: "DEAD", label: "Dead (DLQ)" },
+          ].map((pill) => {
+            const isSelected = statusFilter === pill.id;
+            return (
+              <button
+                key={pill.id}
+                onClick={() => {
+                  setStatusFilter(pill.id);
+                  setOffset(0);
+                }}
+                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                  isSelected
+                    ? "border-2 border-foreground bg-foreground text-background shadow-sm ring-2 ring-foreground/20"
+                    : "border border-border bg-card text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                }`}
+              >
+                {pill.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-border">
           <div>
             <label className="text-xs font-semibold text-muted-foreground block mb-1">
-              Filter Status
+              Select Specific Status
             </label>
             <select
               value={statusFilter}
@@ -61,7 +94,11 @@ export default function TasksPage() {
                 setStatusFilter(e.target.value);
                 setOffset(0);
               }}
-              className="w-full text-xs h-9 rounded-md border border-input bg-background px-3"
+              className={`w-full text-xs h-9 rounded-md border bg-background px-3 transition-colors ${
+                statusFilter
+                  ? "border-2 border-foreground font-semibold"
+                  : "border-input"
+              }`}
             >
               <option value="">All Statuses</option>
               <option value="PENDING">PENDING</option>
@@ -86,7 +123,9 @@ export default function TasksPage() {
                 setQueueFilter(e.target.value);
                 setOffset(0);
               }}
-              className="h-9 text-xs"
+              className={`h-9 text-xs transition-colors ${
+                queueFilter ? "border-2 border-foreground font-semibold" : ""
+              }`}
             />
           </div>
           <div className="flex items-end">

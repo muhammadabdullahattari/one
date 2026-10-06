@@ -15,9 +15,10 @@ import {
   Layers,
   Server,
   Code,
-  ListOrdered,
   History,
 } from "lucide-react";
+import { useState } from "react";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 export default function TaskDetailPage({
   params,
@@ -26,6 +27,7 @@ export default function TaskDetailPage({
 }) {
   const resolvedParams = use(params);
   const taskId = resolvedParams.id;
+  const [cancelModalOpen, setCancelModalOpen] = useState(false);
   const { data: task, isLoading, error } = useTaskDetail(taskId);
 
   const cancelTask = useCancelTask();
@@ -81,7 +83,7 @@ export default function TaskDetailPage({
               variant="destructive"
               size="sm"
               className="gap-2"
-              onClick={() => cancelTask.mutate(task.task_id)}
+              onClick={() => setCancelModalOpen(true)}
               disabled={cancelTask.isPending}
             >
               <XCircle className="w-4 h-4" />
@@ -215,6 +217,17 @@ export default function TaskDetailPage({
           )}
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={cancelModalOpen}
+        onOpenChange={setCancelModalOpen}
+        title="Cancel Task Execution"
+        description={`Are you sure you want to abort task "${task.task_id}"? If currently running, the worker lease will be revoked.`}
+        confirmLabel="Cancel Task"
+        variant="destructive"
+        loading={cancelTask.isPending}
+        onConfirm={() => cancelTask.mutate(task.task_id)}
+      />
     </div>
   );
 }

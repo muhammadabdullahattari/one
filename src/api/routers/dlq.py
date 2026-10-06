@@ -49,6 +49,7 @@ async def list_dlq(
     limit: int = Query(50, ge=1, le=1000, description="Page limit"),
     offset: int = Query(0, ge=0, description="Page offset"),
     tenant_id: str | None = Query(None, description="Filter by tenant ID"),
+    include_replayed: bool = Query(False, description="Include previously replayed DLQ items"),
 ) -> DLQListResponse:
     if principal.is_admin and principal.tenant_id is None:
         effective_tenant = tenant_id
@@ -61,8 +62,12 @@ async def list_dlq(
             )
         effective_tenant = scoped_tenant
 
-    entries = await dlq_repo.list_entries(limit=limit, offset=offset, tenant_id=effective_tenant)
-    total = await dlq_repo.count_entries(tenant_id=effective_tenant)
+    entries = await dlq_repo.list_entries(
+        limit=limit, offset=offset, tenant_id=effective_tenant, include_replayed=include_replayed
+    )
+    total = await dlq_repo.count_entries(
+        tenant_id=effective_tenant, include_replayed=include_replayed
+    )
     queue_map = await _task_queues(session, [e.task_id for e in entries])
     return DLQListResponse(
         items=[

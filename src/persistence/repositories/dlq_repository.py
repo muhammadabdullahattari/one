@@ -66,17 +66,27 @@ class DLQRepository(BaseRepository[DLQEntryModel]):
         await self.session.execute(stmt)
 
     async def list_entries(
-        self, limit: int = 50, offset: int = 0, tenant_id: str | None = None
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        tenant_id: str | None = None,
+        include_replayed: bool = False,
     ) -> list[DLQEntry]:
         stmt = select(DLQEntryModel)
+        if not include_replayed:
+            stmt = stmt.where(DLQEntryModel.last_replayed_at.is_(None))
         if tenant_id:
             stmt = stmt.where(DLQEntryModel.tenant_id == tenant_id)
         stmt = stmt.order_by(DLQEntryModel.dead_at.desc()).limit(limit).offset(offset)
         res = await self.session.execute(stmt)
         return [self._to_entity(m) for m in res.scalars().all()]
 
-    async def count_entries(self, tenant_id: str | None = None) -> int:
+    async def count_entries(
+        self, tenant_id: str | None = None, include_replayed: bool = False
+    ) -> int:
         stmt = select(func.count(DLQEntryModel.dlq_id))
+        if not include_replayed:
+            stmt = stmt.where(DLQEntryModel.last_replayed_at.is_(None))
         if tenant_id:
             stmt = stmt.where(DLQEntryModel.tenant_id == tenant_id)
         res = await self.session.execute(stmt)
