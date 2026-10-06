@@ -1,6 +1,3 @@
-# Hardened Production Docker Compose overlay
-# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
-
 services:
   api:
     deploy:
