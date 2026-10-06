@@ -70,7 +70,9 @@ class TaskRepository(BaseRepository[TaskModel]):
         return task
 
     async def create_task(self, task: Task) -> Task:
-        outbox = TaskOutbox(task_id=task.task_id, event_type="task.created", payload=task.payload or {})
+        outbox = TaskOutbox(
+            task_id=task.task_id, event_type="task.created", payload=task.payload or {}
+        )
         return await self.create_with_outbox(task, outbox)
 
     async def gettaskeventdata(self) -> TaskEventsData | None:

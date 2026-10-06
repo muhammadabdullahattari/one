@@ -17,7 +17,9 @@ async def test_performance_p95_task_submission_latency() -> None:
     queue_name = f"perf-sub-{uuid4().hex[:6]}"
     async with session_scope() as session:
         queue_repo = QueueRepository(session)
-        await queue_repo.create_or_update_queue(Queue(queue_name=queue_name, broker_backend="native"))
+        await queue_repo.create_or_update_queue(
+            Queue(queue_name=queue_name, broker_backend="native")
+        )
 
     task_service = TaskLifecycleService()
     latencies: list[float] = []
@@ -45,7 +47,9 @@ async def test_performance_burst_batch_ingestion() -> None:
     queue_name = f"perf-burst-{uuid4().hex[:6]}"
     async with session_scope() as session:
         queue_repo = QueueRepository(session)
-        await queue_repo.create_or_update_queue(Queue(queue_name=queue_name, broker_backend="native"))
+        await queue_repo.create_or_update_queue(
+            Queue(queue_name=queue_name, broker_backend="native")
+        )
 
     task_service = TaskLifecycleService()
     batch_size = 8
@@ -75,7 +79,9 @@ async def test_performance_queue_wait_and_claim_latency() -> None:
     queue_name = f"perf-claim-{uuid4().hex[:6]}"
     async with session_scope() as session:
         queue_repo = QueueRepository(session)
-        await queue_repo.create_or_update_queue(Queue(queue_name=queue_name, broker_backend="native"))
+        await queue_repo.create_or_update_queue(
+            Queue(queue_name=queue_name, broker_backend="native")
+        )
 
     task_service = TaskLifecycleService()
     task = await task_service.submit_task(
@@ -92,7 +98,9 @@ async def test_performance_queue_wait_and_claim_latency() -> None:
     )
 
     t0 = time.perf_counter()
-    claimed = await worker.broker.consume(queue=queue_name, worker_id=worker.worker_id, batch_size=1)
+    claimed = await worker.broker.consume(
+        queue=queue_name, worker_id=worker.worker_id, batch_size=1
+    )
     claim_ms = (time.perf_counter() - t0) * 1000.0
 
     assert len(claimed) == 1

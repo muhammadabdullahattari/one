@@ -19,7 +19,9 @@ async def test_app1_notification_service_pipeline() -> None:
     notif_queue = f"notif-q-{uuid4().hex[:6]}"
     async with session_scope() as session:
         queue_repo = QueueRepository(session)
-        await queue_repo.create_or_update_queue(Queue(queue_name=notif_queue, broker_backend="native"))
+        await queue_repo.create_or_update_queue(
+            Queue(queue_name=notif_queue, broker_backend="native")
+        )
 
     @global_task_registry.task(name=f"send_email_{notif_queue}", queue=notif_queue, priority=5)
     async def send_email(recipient: str, template: str, context: dict[str, Any]) -> dict[str, Any]:
@@ -43,7 +45,11 @@ async def test_app1_notification_service_pipeline() -> None:
     task_service = TaskLifecycleService()
     email_task = await task_service.submit_task(
         task_type=f"send_email_{notif_queue}",
-        payload={"recipient": "user@example.com", "template": "welcome_email", "context": {"name": "Alice"}},
+        payload={
+            "recipient": "user@example.com",
+            "template": "welcome_email",
+            "context": {"name": "Alice"},
+        },
         queue=notif_queue,
         tenant_id="tenant-notifications-app",
         priority=5,
@@ -68,7 +74,9 @@ async def test_app1_notification_service_pipeline() -> None:
         concurrency=4,
     )
 
-    messages = await worker.broker.consume(queue=notif_queue, worker_id=worker.worker_id, batch_size=2)
+    messages = await worker.broker.consume(
+        queue=notif_queue, worker_id=worker.worker_id, batch_size=2
+    )
     assert len(messages) == 2
 
     for msg in messages:
@@ -93,7 +101,9 @@ async def test_app2_billing_and_payment_gateway() -> None:
     pay_queue = f"pay-q-{uuid4().hex[:6]}"
     async with session_scope() as session:
         queue_repo = QueueRepository(session)
-        await queue_repo.create_or_update_queue(Queue(queue_name=pay_queue, broker_backend="native"))
+        await queue_repo.create_or_update_queue(
+            Queue(queue_name=pay_queue, broker_backend="native")
+        )
 
     @global_task_registry.task(name=f"process_payment_{pay_queue}", queue=pay_queue)
     async def process_payment(account_id: str, amount: float, currency: str) -> dict[str, Any]:
@@ -136,7 +146,9 @@ async def test_app2_billing_and_payment_gateway() -> None:
         queues=[pay_queue],
         concurrency=2,
     )
-    messages = await worker.broker.consume(queue=pay_queue, worker_id=worker.worker_id, batch_size=1)
+    messages = await worker.broker.consume(
+        queue=pay_queue, worker_id=worker.worker_id, batch_size=1
+    )
     assert len(messages) == 1
     await worker._process_message(messages[0])
 
@@ -155,7 +167,9 @@ async def test_app2_billing_and_payment_gateway() -> None:
     )
     await publisher.publish_batch()
 
-    fraud_messages = await worker.broker.consume(queue=pay_queue, worker_id=worker.worker_id, batch_size=1)
+    fraud_messages = await worker.broker.consume(
+        queue=pay_queue, worker_id=worker.worker_id, batch_size=1
+    )
     assert len(fraud_messages) == 1
     await worker._process_message(fraud_messages[0])
 
@@ -181,7 +195,9 @@ async def test_app3_analytics_and_report_generator() -> None:
     rep_queue = f"rep-q-{uuid4().hex[:6]}"
     async with session_scope() as session:
         queue_repo = QueueRepository(session)
-        await queue_repo.create_or_update_queue(Queue(queue_name=rep_queue, broker_backend="native"))
+        await queue_repo.create_or_update_queue(
+            Queue(queue_name=rep_queue, broker_backend="native")
+        )
 
     @global_task_registry.task(name=f"generate_kpi_report_{rep_queue}", queue=rep_queue)
     async def generate_kpi_report(metric_group: str, period: str) -> dict[str, Any]:
@@ -223,7 +239,9 @@ async def test_app3_analytics_and_report_generator() -> None:
         queues=[rep_queue],
         concurrency=2,
     )
-    messages = await worker.broker.consume(queue=rep_queue, worker_id=worker.worker_id, batch_size=1)
+    messages = await worker.broker.consume(
+        queue=rep_queue, worker_id=worker.worker_id, batch_size=1
+    )
     assert len(messages) == 1
     assert messages[0].envelope.task_id == active_report_task.task_id
     await worker._process_message(messages[0])

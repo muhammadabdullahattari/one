@@ -143,13 +143,10 @@ class WorkerRuntime:
             else:
                 max_att = envelope.max_attempts or self.settings.default_max_attempts
                 current_attempt = envelope.attempt_count + 1
-                retryable = (
-                    default_retry_policy.is_retryable(
-                        attempt=current_attempt,
-                        exception=result.error_class or "UnknownError",
-                    )
-                    and (current_attempt < max_att)
-                )
+                retryable = default_retry_policy.is_retryable(
+                    attempt=current_attempt,
+                    exception=result.error_class or "UnknownError",
+                ) and (current_attempt < max_att)
                 next_retry = (
                     default_retry_policy.compute_next_retry_time(current_attempt)
                     if retryable

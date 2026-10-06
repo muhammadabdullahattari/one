@@ -29,7 +29,9 @@ async def test_chaos_worker_crash_mid_execution_lease_recovery() -> None:
 
     async with session_scope() as session:
         queue_repo = QueueRepository(session)
-        await queue_repo.create_or_update_queue(Queue(queue_name=queue_name, broker_backend="native"))
+        await queue_repo.create_or_update_queue(
+            Queue(queue_name=queue_name, broker_backend="native")
+        )
 
         task_repo = TaskRepository(session)
         await task_repo.create_task(
@@ -66,7 +68,9 @@ async def test_chaos_worker_crash_post_persist_pre_ack() -> None:
 
     async with session_scope() as session:
         queue_repo = QueueRepository(session)
-        await queue_repo.create_or_update_queue(Queue(queue_name=queue_name, broker_backend="native"))
+        await queue_repo.create_or_update_queue(
+            Queue(queue_name=queue_name, broker_backend="native")
+        )
 
         task_repo = TaskRepository(session)
         await task_repo.create_task(

@@ -23,7 +23,9 @@ async def test_st_001_happy_path_async_task_execution() -> None:
     queue_name = f"st01-q-{uuid4().hex[:6]}"
     async with session_scope() as session:
         queue_repo = QueueRepository(session)
-        await queue_repo.create_or_update_queue(Queue(queue_name=queue_name, broker_backend="native"))
+        await queue_repo.create_or_update_queue(
+            Queue(queue_name=queue_name, broker_backend="native")
+        )
 
     @global_task_registry.task(name=f"math_multiply_{queue_name}", queue=queue_name)
     async def math_multiply(a: int, b: int) -> dict[str, int]:
@@ -41,8 +43,12 @@ async def test_st_001_happy_path_async_task_execution() -> None:
     publisher = OutboxPublisher(batch_size=20)
     await publisher.publish_batch()
 
-    worker = WorkerRuntime(worker_id=f"worker-{uuid4().hex[:6]}", queues=[queue_name], concurrency=2)
-    messages = await worker.broker.consume(queue=queue_name, worker_id=worker.worker_id, batch_size=1)
+    worker = WorkerRuntime(
+        worker_id=f"worker-{uuid4().hex[:6]}", queues=[queue_name], concurrency=2
+    )
+    messages = await worker.broker.consume(
+        queue=queue_name, worker_id=worker.worker_id, batch_size=1
+    )
     assert len(messages) == 1
     await worker._process_message(messages[0])
 
@@ -59,7 +65,9 @@ async def test_st_002_automatic_retry_on_transient_error() -> None:
 
     async with session_scope() as session:
         queue_repo = QueueRepository(session)
-        await queue_repo.create_or_update_queue(Queue(queue_name=queue_name, broker_backend="native"))
+        await queue_repo.create_or_update_queue(
+            Queue(queue_name=queue_name, broker_backend="native")
+        )
 
     @global_task_registry.task(name=f"flaky_call_{queue_name}", queue=queue_name, max_retries=3)
     async def flaky_call() -> dict[str, str]:
@@ -80,8 +88,12 @@ async def test_st_002_automatic_retry_on_transient_error() -> None:
     publisher = OutboxPublisher(batch_size=20)
     await publisher.publish_batch()
 
-    worker = WorkerRuntime(worker_id=f"worker-{uuid4().hex[:6]}", queues=[queue_name], concurrency=2)
-    messages = await worker.broker.consume(queue=queue_name, worker_id=worker.worker_id, batch_size=1)
+    worker = WorkerRuntime(
+        worker_id=f"worker-{uuid4().hex[:6]}", queues=[queue_name], concurrency=2
+    )
+    messages = await worker.broker.consume(
+        queue=queue_name, worker_id=worker.worker_id, batch_size=1
+    )
     assert len(messages) == 1
 
     await worker._process_message(messages[0])
@@ -90,7 +102,9 @@ async def test_st_002_automatic_retry_on_transient_error() -> None:
     assert failed_first is not None
     assert failed_first.status in (TaskStatus.RETRY_WAIT, TaskStatus.QUEUED)
 
-    messages_retry = await worker.broker.consume(queue=queue_name, worker_id=worker.worker_id, batch_size=1)
+    messages_retry = await worker.broker.consume(
+        queue=queue_name, worker_id=worker.worker_id, batch_size=1
+    )
     assert len(messages_retry) == 1
     await worker._process_message(messages_retry[0])
 
@@ -105,7 +119,9 @@ async def test_st_003_max_retries_exhaustion_routes_to_dlq() -> None:
     queue_name = f"st03-q-{uuid4().hex[:6]}"
     async with session_scope() as session:
         queue_repo = QueueRepository(session)
-        await queue_repo.create_or_update_queue(Queue(queue_name=queue_name, broker_backend="native"))
+        await queue_repo.create_or_update_queue(
+            Queue(queue_name=queue_name, broker_backend="native")
+        )
 
     @global_task_registry.task(name=f"always_failing_{queue_name}", queue=queue_name, max_retries=1)
     async def always_failing() -> None:
@@ -123,8 +139,12 @@ async def test_st_003_max_retries_exhaustion_routes_to_dlq() -> None:
     publisher = OutboxPublisher(batch_size=20)
     await publisher.publish_batch()
 
-    worker = WorkerRuntime(worker_id=f"worker-{uuid4().hex[:6]}", queues=[queue_name], concurrency=2)
-    messages = await worker.broker.consume(queue=queue_name, worker_id=worker.worker_id, batch_size=1)
+    worker = WorkerRuntime(
+        worker_id=f"worker-{uuid4().hex[:6]}", queues=[queue_name], concurrency=2
+    )
+    messages = await worker.broker.consume(
+        queue=queue_name, worker_id=worker.worker_id, batch_size=1
+    )
     assert len(messages) == 1
 
     await worker._process_message(messages[0])
@@ -154,7 +174,9 @@ async def test_st_004_non_retryable_fatal_error_immediate_dlq() -> None:
     queue_name = f"st04-q-{uuid4().hex[:6]}"
     async with session_scope() as session:
         queue_repo = QueueRepository(session)
-        await queue_repo.create_or_update_queue(Queue(queue_name=queue_name, broker_backend="native"))
+        await queue_repo.create_or_update_queue(
+            Queue(queue_name=queue_name, broker_backend="native")
+        )
 
     @global_task_registry.task(name=f"fatal_task_{queue_name}", queue=queue_name)
     async def fatal_task() -> None:
@@ -172,8 +194,12 @@ async def test_st_004_non_retryable_fatal_error_immediate_dlq() -> None:
     publisher = OutboxPublisher(batch_size=20)
     await publisher.publish_batch()
 
-    worker = WorkerRuntime(worker_id=f"worker-{uuid4().hex[:6]}", queues=[queue_name], concurrency=2)
-    messages = await worker.broker.consume(queue=queue_name, worker_id=worker.worker_id, batch_size=1)
+    worker = WorkerRuntime(
+        worker_id=f"worker-{uuid4().hex[:6]}", queues=[queue_name], concurrency=2
+    )
+    messages = await worker.broker.consume(
+        queue=queue_name, worker_id=worker.worker_id, batch_size=1
+    )
     assert len(messages) == 1
 
     await worker._process_message(messages[0])
@@ -190,7 +216,9 @@ async def test_st_005_deduplication_via_idempotency_key() -> None:
 
     async with session_scope() as session:
         queue_repo = QueueRepository(session)
-        await queue_repo.create_or_update_queue(Queue(queue_name=queue_name, broker_backend="native"))
+        await queue_repo.create_or_update_queue(
+            Queue(queue_name=queue_name, broker_backend="native")
+        )
 
     task_service = TaskLifecycleService()
     first_task = await task_service.submit_task(
@@ -217,7 +245,9 @@ async def test_st_006_task_cancellation_in_queued_state() -> None:
     queue_name = f"st06-q-{uuid4().hex[:6]}"
     async with session_scope() as session:
         queue_repo = QueueRepository(session)
-        await queue_repo.create_or_update_queue(Queue(queue_name=queue_name, broker_backend="native"))
+        await queue_repo.create_or_update_queue(
+            Queue(queue_name=queue_name, broker_backend="native")
+        )
 
     task_service = TaskLifecycleService()
     task = await task_service.submit_task(
@@ -263,9 +293,13 @@ async def test_st_008_task_execution_timeout_enforcement() -> None:
     queue_name = f"st08-q-{uuid4().hex[:6]}"
     async with session_scope() as session:
         queue_repo = QueueRepository(session)
-        await queue_repo.create_or_update_queue(Queue(queue_name=queue_name, broker_backend="native"))
+        await queue_repo.create_or_update_queue(
+            Queue(queue_name=queue_name, broker_backend="native")
+        )
 
-    @global_task_registry.task(name=f"sleepy_task_{queue_name}", queue=queue_name, timeout_seconds=1)
+    @global_task_registry.task(
+        name=f"sleepy_task_{queue_name}", queue=queue_name, timeout_seconds=1
+    )
     async def sleepy_task() -> None:
         await asyncio.sleep(2.0)
 
@@ -281,8 +315,12 @@ async def test_st_008_task_execution_timeout_enforcement() -> None:
     publisher = OutboxPublisher(batch_size=20)
     await publisher.publish_batch()
 
-    worker = WorkerRuntime(worker_id=f"worker-{uuid4().hex[:6]}", queues=[queue_name], concurrency=2)
-    messages = await worker.broker.consume(queue=queue_name, worker_id=worker.worker_id, batch_size=1)
+    worker = WorkerRuntime(
+        worker_id=f"worker-{uuid4().hex[:6]}", queues=[queue_name], concurrency=2
+    )
+    messages = await worker.broker.consume(
+        queue=queue_name, worker_id=worker.worker_id, batch_size=1
+    )
     assert len(messages) == 1
 
     await worker._process_message(messages[0])
@@ -313,8 +351,12 @@ async def test_st_009_anti_starvation_queue_fairness() -> None:
         task_type="low_job", queue=q_low, priority=9, tenant_id="tenant-fair"
     )
 
-    worker = WorkerRuntime(worker_id=f"worker-{uuid4().hex[:6]}", queues=[q_high, q_low], concurrency=10)
-    consumed_low = await worker.broker.consume(queue=q_low, worker_id=worker.worker_id, batch_size=1)
+    worker = WorkerRuntime(
+        worker_id=f"worker-{uuid4().hex[:6]}", queues=[q_high, q_low], concurrency=10
+    )
+    consumed_low = await worker.broker.consume(
+        queue=q_low, worker_id=worker.worker_id, batch_size=1
+    )
     assert len(consumed_low) == 1
     assert consumed_low[0].envelope.task_type == "low_job"
 
@@ -342,9 +384,13 @@ async def test_st_010_per_tenant_concurrency_limits() -> None:
         running_tasks = await task_repo.list_tasks(tenant_id=tenant_id, status=TaskStatus.RUNNING)
         assert len(running_tasks) == 3
 
-        await task_repo.complete_task(task_id=task_ids[0], attempt_id=None, result_data={"done": True})
+        await task_repo.complete_task(
+            task_id=task_ids[0], attempt_id=None, result_data={"done": True}
+        )
 
-        active_remaining = await task_repo.list_tasks(tenant_id=tenant_id, status=TaskStatus.RUNNING)
+        active_remaining = await task_repo.list_tasks(
+            tenant_id=tenant_id, status=TaskStatus.RUNNING
+        )
         assert len(active_remaining) == 2
 
 
@@ -448,7 +494,9 @@ async def test_st_014_dlq_replay_admin_workflow() -> None:
     queue_name = f"st14-q-{uuid4().hex[:6]}"
     async with session_scope() as session:
         queue_repo = QueueRepository(session)
-        await queue_repo.create_or_update_queue(Queue(queue_name=queue_name, broker_backend="native"))
+        await queue_repo.create_or_update_queue(
+            Queue(queue_name=queue_name, broker_backend="native")
+        )
 
     task_id = uuid4()
     dlq_id = uuid4()
