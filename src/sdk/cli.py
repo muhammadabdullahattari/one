@@ -60,6 +60,9 @@ def worker_start(
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
+    typer.echo(f"Starting worker {runtime.worker_id} on queues: {queue_list}")
+    typer.echo("Web Operations Console (Flower equivalent): http://localhost:3000")
+
     try:
         loop.run_until_complete(runtime.start())
     except KeyboardInterrupt, SystemExit:
@@ -101,6 +104,9 @@ def api_start(
 ) -> None:
     """Start the FastAPI application surface."""
     settings = get_settings()
+    typer.echo(f"Starting Task Engine API on http://{host}:{port}")
+    typer.echo(f"  Interactive OpenAPI / Swagger Docs: http://localhost:{port}/docs")
+    typer.echo("  Web Operations Console (Flower equivalent): http://localhost:3000")
     uvicorn.run(
         "src.api.main:app",
         host=host,
