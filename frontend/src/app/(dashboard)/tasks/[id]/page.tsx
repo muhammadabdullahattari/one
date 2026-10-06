@@ -103,7 +103,6 @@ export default function TaskDetailPage({
         </div>
       </div>
 
-      {/* Overview Grid */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card className="p-4">
           <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
@@ -144,7 +143,6 @@ export default function TaskDetailPage({
         </Card>
       </div>
 
-      {/* Payload & Result Inspection */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader className="py-3 border-b border-border flex flex-row items-center gap-2">
@@ -171,7 +169,6 @@ export default function TaskDetailPage({
         </Card>
       </div>
 
-      {/* Attempt History */}
       <Card>
         <CardHeader className="py-3 border-b border-border flex flex-row items-center gap-2">
           <History className="w-4 h-4 text-blue-500" />

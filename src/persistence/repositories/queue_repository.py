@@ -203,7 +203,6 @@ class QueueRepository(BaseRepository[QueueModel]):
             .group_by(QueueModel.queue_name)
             .order_by(QueueModel.queue_name.asc())
         )
-        # Scope the queue list itself to the tenant
         if tenant_id:
             stmt = stmt.where(QueueModel.tenant_id == tenant_id)
 

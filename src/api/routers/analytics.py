@@ -120,7 +120,6 @@ async def get_throughput(
             ThroughputPoint(timestamp=pt_time, incoming_rate=rate_in, outgoing_rate=rate_out)
         )
 
-    # Current rate based on recent 15 minutes window, or overall window
     current_in_tps = (
         round(recent_in / 900.0, 2)
         if recent_in > 0

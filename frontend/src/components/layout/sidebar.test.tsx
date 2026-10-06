@@ -6,13 +6,11 @@ import { Sidebar } from "./sidebar";
 import { apiClient } from "@/lib/api-client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
-// Mock next/navigation
 const mockUsePathname = vi.fn();
 vi.mock("next/navigation", () => ({
   usePathname: () => mockUsePathname(),
 }));
 
-// Mock apiClient
 vi.mock("@/lib/api-client", () => ({
   apiClient: {
     post: vi.fn(),
@@ -35,7 +33,6 @@ describe("Sidebar component", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockUsePathname.mockReturnValue("/dashboard");
-    // Mock window.location
     delete (window as any).location;
     window.location = { href: "" } as any;
   });
@@ -55,7 +52,6 @@ describe("Sidebar component", () => {
     expect(screen.getByRole("link", { name: /Dead Letter Queue/i })).toHaveAttribute("href", "/dlq");
     expect(screen.getByRole("link", { name: /Analytics/i })).toHaveAttribute("href", "/metrics");
 
-    // Badges
     expect(screen.getByText("Flower")).toBeInTheDocument();
     expect(screen.getByText("Grafana")).toBeInTheDocument();
   });

@@ -18,9 +18,7 @@ def test_dockerfiles_exist_and_meet_srs_standards() -> None:
     for df in dockerfiles:
         assert df.exists(), f"Missing Dockerfile: {df}"
         content = df.read_text(encoding="utf-8")
-        # SRS §16.1: Images SHALL run as non-root user
         assert "USER" in content, f"{df.name} missing USER non-root directive"
-        # SRS §16.1: Container health checks SHALL be defined
         assert "HEALTHCHECK" in content, f"{df.name} missing HEALTHCHECK directive"
 
 
@@ -45,7 +43,6 @@ def test_compose_production_baseline_syntax_and_services() -> None:
     for s in required_services:
         assert s in services, f"Service '{s}' missing from docker-compose.yml"
 
-    # API and Worker must have healthcheck or depends_on health conditions
     assert "depends_on" in services["api"]
     assert "postgres" in services["api"]["depends_on"]
     assert "redis" in services["api"]["depends_on"]
@@ -64,7 +61,6 @@ def test_compose_overlays_syntax() -> None:
             data = yaml.safe_load(f)
         assert "services" in data, f"{ov.name} missing services block"
 
-    # Verify prod overlay specifies resource limits
     with open(PROJECT_ROOT / "docker-compose.prod.yml", encoding="utf-8") as f:
         prod_data = yaml.safe_load(f)
     api_deploy = prod_data["services"]["api"]["deploy"]["resources"]["limits"]
@@ -120,6 +116,5 @@ def test_all_11_runbooks_exist_per_srs_22_1() -> None:
 def test_healthcheck_script_functions() -> None:
     from scripts.healthcheck import check_process
 
-    # Check for non-existent process returns 1 or 0 safely
     rc = check_process("non_existent_fake_process_999999")
     assert rc in (0, 1)

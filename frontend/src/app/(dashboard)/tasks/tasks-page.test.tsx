@@ -6,7 +6,6 @@ import TasksPage from "./page";
 import * as apiHooks from "@/lib/api-hooks";
 import { TaskStatus } from "@/types/api";
 
-// Mock @tanstack/react-virtual for JSDOM
 vi.mock("@tanstack/react-virtual", () => ({
   useVirtualizer: vi.fn(({ count, estimateSize }) => ({
     getTotalSize: () => count * (estimateSize ? estimateSize() : 64),
@@ -20,7 +19,6 @@ vi.mock("@tanstack/react-virtual", () => ({
   })),
 }));
 
-// Mock useTasks
 vi.mock("@/lib/api-hooks", () => ({
   useTasks: vi.fn(),
 }));
@@ -129,7 +127,6 @@ describe("TasksPage virtualized backlog", () => {
       })
     );
 
-    // Click Reset
     const resetBtn = screen.getByRole("button", { name: /Reset Filters/i });
     await user.click(resetBtn);
 

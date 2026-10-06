@@ -55,7 +55,6 @@ export default function LiveConsolePage() {
 
   return (
     <div className="space-y-6">
-      {/* Console Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-border pb-4">
         <div>
           <div className="flex items-center gap-2">
@@ -94,9 +93,7 @@ export default function LiveConsolePage() {
         </div>
       </div>
 
-      {/* Top Split: Active Worker Roster & Live Queues */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Worker Fleet Roster */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-3">
             <div>
@@ -161,7 +158,6 @@ export default function LiveConsolePage() {
           </CardContent>
         </Card>
 
-        {/* Live Queue Backlogs */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-3">
             <div>

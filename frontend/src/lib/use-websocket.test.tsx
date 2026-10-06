@@ -5,7 +5,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useWebSocketSubscription } from "./use-websocket";
 import { LiveStatusIndicator } from "@/components/layout/live-status-indicator";
 
-// Mock WebSocket
 class MockWebSocket {
   static CONNECTING = 0;
   static OPEN = 1;
@@ -14,7 +13,7 @@ class MockWebSocket {
   static instances: MockWebSocket[] = [];
 
   url: string;
-  readyState: number = 0; // CONNECTING
+  readyState: number = 0;
   onopen: ((ev: Event) => void) | null = null;
   onmessage: ((ev: MessageEvent) => void) | null = null;
   onclose: ((ev: CloseEvent) => void) | null = null;
@@ -114,12 +113,10 @@ describe("WebSocket Real-Time Integration (Phase 11)", () => {
 
     const ws = MockWebSocket.instances[0];
 
-    // Wait until open
     await waitFor(() => {
       expect(ws.readyState).toBe(WebSocket.OPEN);
     });
 
-    // Simulate task.created event
     await act(async () => {
       ws.simulateMessage({
         type: "task.created",
@@ -130,7 +127,6 @@ describe("WebSocket Real-Time Integration (Phase 11)", () => {
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["tasks"] });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["analytics"] });
 
-    // Simulate worker.updated event
     await act(async () => {
       ws.simulateMessage({
         type: "worker.updated",
@@ -148,7 +144,6 @@ describe("WebSocket Real-Time Integration (Phase 11)", () => {
       </QueryClientProvider>
     );
 
-    // Transitions to connected
     await waitFor(() => {
       expect(screen.getByText("Live WS Sync")).toBeInTheDocument();
     });
@@ -191,7 +186,6 @@ describe("WebSocket Real-Time Integration (Phase 11)", () => {
 
     expect(hookState.connectionState).toBe("disconnected");
 
-    // Wait a brief period and ensure no new connection attempt was spawned
     await new Promise((r) => setTimeout(r, 50));
     expect(MockWebSocket.instances.length).toBe(initialInstancesCount);
   });

@@ -83,7 +83,6 @@ async def get_worker(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"Worker '{worker_id}' not found."
         )
-    # Enforce cross-tenant protection: a non-admin can only view their own tenant's workers
     tenant = _effective_tenant(principal)
     if tenant and worker.tenant_id != tenant:
         raise HTTPException(

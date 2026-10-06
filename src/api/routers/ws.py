@@ -35,7 +35,6 @@ def _authenticate_ws(websocket: WebSocket) -> tuple[str | None, str, str | None]
         except Exception:
             pass
 
-    # Fallback to query param tenant_id if provided
     tenant_param = websocket.query_params.get("tenant_id")
     return (None, "viewer", tenant_param or "default")
 
@@ -80,7 +79,6 @@ class ConnectionManager:
             if target_tenant is None and isinstance(message.get("data"), dict):
                 target_tenant = message["data"].get("tenant_id")
 
-        # Collect distinct websockets subscribed to the channel or to "live"
         targets: set[WebSocket] = set()
         if channel in self.active_connections:
             targets.update(self.active_connections[channel])
@@ -93,9 +91,6 @@ class ConnectionManager:
             client_tenant = meta.get("tenant_id")
             client_role = meta.get("role", "viewer")
 
-            # Multi-tenant isolation enforcement:
-            # If event belongs to a specific tenant, only send to matching tenant
-            # or global admin with cluster-wide privileges.
             if target_tenant is not None and client_tenant is not None:
                 is_same_tenant = client_tenant == target_tenant
                 is_global_admin = client_role == "admin" and client_tenant in (

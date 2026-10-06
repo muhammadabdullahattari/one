@@ -125,7 +125,6 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-8">
-      {/* Top Banner & Primary Action */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground">Operational Overview</h1>
@@ -145,7 +144,6 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
@@ -206,7 +204,6 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      {/* Main Charts & Telemetry */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2">
           <CardHeader>
@@ -261,7 +258,6 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      {/* Recent Tasks List */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <div>

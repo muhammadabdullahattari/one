@@ -17,7 +17,6 @@ import {
   User,
 } from "@/types/api";
 
-// Query Keys
 export const queryKeys = {
   tasks: (filters?: Record<string, unknown>) => ["tasks", filters],
   taskDetail: (id: string) => ["tasks", "detail", id],
@@ -33,7 +32,6 @@ export const queryKeys = {
   statusDistribution: (queue?: string) => ["analytics", "status-distribution", queue],
 };
 
-// Tasks
 export function useTasks(params: {
   queue?: string;
   status?: string;

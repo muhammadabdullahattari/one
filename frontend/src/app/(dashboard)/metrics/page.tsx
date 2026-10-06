@@ -71,7 +71,6 @@ export default function MetricsPage() {
 
   const queues = queuesData?.items || [];
 
-  // 1. Throughput Chart Options
   const throughputOption: EChartsCoreOption = {
     tooltip: {
       trigger: "axis",
@@ -153,7 +152,6 @@ export default function MetricsPage() {
     ],
   };
 
-  // 2. Latency Percentiles Chart (SRS §17.19)
   const latencyOption: EChartsCoreOption = {
     tooltip: {
       trigger: "axis",

@@ -30,9 +30,6 @@ def version() -> None:
     typer.echo(f"Task Engine v{settings.app_version} ({settings.app_env.value})")
 
 
-# ── Worker Commands ───────────────────────────────────────────────────────────
-
-
 @worker_app.command(name="start")
 def worker_start(
     worker_id: Annotated[
@@ -72,9 +69,6 @@ def worker_start(
         loop.close()
 
 
-# ── Scheduler Commands ────────────────────────────────────────────────────────
-
-
 @scheduler_app.command(name="start")
 def scheduler_start(
     leader_lock_key: Annotated[
@@ -98,9 +92,6 @@ def scheduler_start(
         loop.close()
 
 
-# ── API Server Commands ───────────────────────────────────────────────────────
-
-
 @api_app.command(name="start")
 def api_start(
     host: Annotated[str, typer.Option("--host", "-h", help="Bind network host")] = "0.0.0.0",
@@ -118,9 +109,6 @@ def api_start(
         workers=workers if not reload else 1,
         log_level=settings.log_level.lower(),
     )
-
-
-# ── Database Migration Commands ───────────────────────────────────────────────
 
 
 @db_app.command(name="migrate")
@@ -151,7 +139,6 @@ def db_rollback(
     typer.echo(f"Database rolled back by {steps} revision(s).")
 
 
-# Alias top-level migrate and rollback for convenience
 @app.command(name="migrate")
 def migrate_alias(
     revision: Annotated[

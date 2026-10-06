@@ -45,7 +45,6 @@ def test_websocket_heartbeat_text_ping_pong(sync_client: TestClient) -> None:
         ack = ws.receive_json()
         assert ack["type"] == "connection.ack"
 
-        # Text heartbeat
         ws.send_text("ping")
         response = ws.receive_text()
         assert response == "pong"
@@ -56,7 +55,6 @@ def test_websocket_heartbeat_json_ping_pong(sync_client: TestClient) -> None:
         ack = ws.receive_json()
         assert ack["type"] == "connection.ack"
 
-        # JSON heartbeat
         ws.send_json({"type": "ping"})
         response = ws.receive_json()
         assert response == {"type": "pong"}
@@ -72,7 +70,6 @@ async def test_websocket_multi_tenant_isolation(sync_client: TestClient) -> None
             ack_beta = ws_beta.receive_json()
             assert ack_beta["tenant_id"] == "tenant-beta"
 
-            # Broadcast targeted at tenant-alpha only
             msg = {
                 "type": "task.created",
                 "tenant_id": "tenant-alpha",
@@ -84,12 +81,9 @@ async def test_websocket_multi_tenant_isolation(sync_client: TestClient) -> None
             assert received["type"] == "task.created"
             assert received["tenant_id"] == "tenant-alpha"
 
-            # ws_beta should NOT have received that message. Send ping to verify queue state.
             ws_beta.send_text("ping")
             beta_resp = ws_beta.receive_text()
-            assert (
-                beta_resp == "pong"
-            )  # If it had received the broadcast, this would fail or mismatch!
+            assert beta_resp == "pong"
 
 
 def test_websocket_api_v1_prefix_compatibility(sync_client: TestClient) -> None:

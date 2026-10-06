@@ -49,7 +49,6 @@ export default function TasksPage() {
         </Button>
       </div>
 
-      {/* Filter Toolbar */}
       <Card className="p-4">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
@@ -106,7 +105,6 @@ export default function TasksPage() {
         </div>
       </Card>
 
-      {/* Virtualized Task Table */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between py-3 border-b border-border">
           <CardTitle className="text-sm font-semibold">

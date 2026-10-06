@@ -37,7 +37,7 @@ async function request<T>(
   const config: RequestInit = {
     ...options,
     headers,
-    credentials: "include", // Transmit HttpOnly authentication cookies
+    credentials: "include",
   };
 
   let response = await fetch(url, config);

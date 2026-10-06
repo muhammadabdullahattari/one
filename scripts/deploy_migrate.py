@@ -94,19 +94,15 @@ def main() -> None:
     settings = get_settings()
     db_url = settings.database_url
 
-    # Step 1: Connectivity check
     connected = asyncio.run(verify_database_connection(db_url))
     if not connected:
         sys.exit(1)
 
-    # Step 2: Apply migrations
     run_migrations(args.config, args.target)
 
-    # Step 3: Optional rollback rehearsal
     if args.test_rollback:
         run_rollback_rehearsal(args.config, steps=1)
 
-    # Step 4: Verify schema tables
     tables_ok = asyncio.run(verify_tables_exist(db_url))
     if not tables_ok:
         sys.exit(1)

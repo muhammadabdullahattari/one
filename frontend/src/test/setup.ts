@@ -6,14 +6,12 @@ afterEach(() => {
   cleanup();
 });
 
-// Mock ResizeObserver for ECharts and virtualized components
 global.ResizeObserver = class ResizeObserver {
   observe() {}
   unobserve() {}
   disconnect() {}
 };
 
-// Mock window.matchMedia
 Object.defineProperty(window, "matchMedia", {
   writable: true,
   value: vi.fn().mockImplementation((query: string) => ({

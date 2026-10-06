@@ -16,9 +16,6 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # 1. Add tenant_id to queues table
-    #    Queues are system-global resources that must be scoped per tenant.
-    #    Existing rows default to "default" so the seed "default" queue keeps working.
     op.add_column(
         "queues",
         sa.Column(
@@ -29,7 +26,6 @@ def upgrade() -> None:
         ),
     )
     op.create_index("ix_queues_tenant_id", "queues", ["tenant_id"], unique=False)
-    # Composite index used by list_queues(tenant_id=...) queries
     op.create_index(
         "ix_queues_tenant_name",
         "queues",
@@ -37,9 +33,6 @@ def upgrade() -> None:
         unique=False,
     )
 
-    # 2. Add tenant_id to workers table
-    #    Workers register under a specific tenant so list_workers can be scoped.
-    #    Existing rows default to "default".
     op.add_column(
         "workers",
         sa.Column(

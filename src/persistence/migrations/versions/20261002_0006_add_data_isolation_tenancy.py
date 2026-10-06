@@ -16,14 +16,12 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # 1. Add tenant_id to users
     op.add_column(
         "users",
         sa.Column("tenant_id", sa.String(length=64), nullable=False, server_default="default"),
     )
     op.create_index("ix_users_tenant_id", "users", ["tenant_id"], unique=False)
 
-    # 2. Add tenant_id to schedules
     op.add_column(
         "schedules",
         sa.Column("tenant_id", sa.String(length=64), nullable=False, server_default="default"),
@@ -36,12 +34,10 @@ def upgrade() -> None:
         unique=False,
     )
 
-    # 3. Add tenant_id to dlq_entries
     op.add_column(
         "dlq_entries",
         sa.Column("tenant_id", sa.String(length=64), nullable=False, server_default="default"),
     )
-    # Backfill tenant_id from parent tasks table
     op.execute(
         "UPDATE dlq_entries SET tenant_id = tasks.tenant_id FROM tasks WHERE dlq_entries.task_id = tasks.task_id"
     )
@@ -53,7 +49,6 @@ def upgrade() -> None:
         unique=False,
     )
 
-    # 4. Composite indexes on tasks table
     op.create_index(
         "ix_tasks_tenant_queue_status_created",
         "tasks",

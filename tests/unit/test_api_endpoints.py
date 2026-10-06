@@ -70,14 +70,12 @@ async def test_auth_login_and_me_lifecycle(client: AsyncClient) -> None:
     assert "te_access_token" in login_res.cookies
     assert "te_refresh_token" in login_res.cookies
 
-    # Authenticated request via cookie session
     me_res = await client.get("/api/v1/auth/me")
     assert me_res.status_code == 200
     me_data = me_res.json()
     assert me_data["role"] == "admin"
     assert me_data["principal_id"] == token_data["user_id"]
 
-    # Also verify Authorization header fallback with cookie token
     cookie_token = login_res.cookies["te_access_token"]
     me_res_hdr = await client.get(
         "/api/v1/auth/me", headers={"Authorization": f"Bearer {cookie_token}"}
@@ -155,7 +153,6 @@ async def test_queues_list_and_create(client: AsyncClient) -> None:
 
 async def test_queue_update_and_broker_backend_validation(client: AsyncClient) -> None:
     q_name = f"test-update-q-{uuid4().hex[:6]}"
-    # 1. Create with empty broker_backend should default to "native"
     create_res = await client.post(
         "/api/v1/queues",
         json={
@@ -169,7 +166,6 @@ async def test_queue_update_and_broker_backend_validation(client: AsyncClient) -
     assert create_res.status_code == 201
     assert create_res.json()["broker_backend"] == "native"
 
-    # 2. Update with empty string broker_backend (Swagger UI case) should preserve existing
     update_res = await client.put(
         f"/api/v1/queues/{q_name}",
         json={
@@ -185,7 +181,6 @@ async def test_queue_update_and_broker_backend_validation(client: AsyncClient) -
     assert updated["default_priority"] == 2
     assert updated["broker_backend"] == "native"
 
-    # 3. Update with valid registered backend ("redis")
     update_redis = await client.put(
         f"/api/v1/queues/{q_name}",
         json={"broker_backend": "redis"},
@@ -193,7 +188,6 @@ async def test_queue_update_and_broker_backend_validation(client: AsyncClient) -
     assert update_redis.status_code == 200
     assert update_redis.json()["broker_backend"] == "redis"
 
-    # 4. Update with unregistered backend should return 400 Bad Request
     update_invalid = await client.put(
         f"/api/v1/queues/{q_name}",
         json={"broker_backend": "unknown_broker"},
@@ -201,7 +195,6 @@ async def test_queue_update_and_broker_backend_validation(client: AsyncClient) -
     assert update_invalid.status_code == 400
     assert "not registered or supported" in update_invalid.json()["error"]["message"]
 
-    # 5. Create with unregistered backend should return 400 Bad Request
     create_invalid = await client.post(
         "/api/v1/queues",
         json={
@@ -214,16 +207,13 @@ async def test_queue_update_and_broker_backend_validation(client: AsyncClient) -
 
 
 async def test_queue_deletion_and_task_reference_handling(client: AsyncClient) -> None:
-    # 1. System default queue cannot be deleted
     del_default = await client.delete("/api/v1/queues/default")
     assert del_default.status_code == 400
     assert "default system queue cannot be deleted" in del_default.json()["error"]["message"]
 
-    # 2. Non-existent queue returns 404
     del_404 = await client.delete("/api/v1/queues/nonexistent-queue-xyz")
     assert del_404.status_code == 404
 
-    # 3. Create a test queue
     q_name = f"test-del-q-{uuid4().hex[:6]}"
     create_res = await client.post(
         "/api/v1/queues",
@@ -231,7 +221,6 @@ async def test_queue_deletion_and_task_reference_handling(client: AsyncClient) -
     )
     assert create_res.status_code == 201
 
-    # 4. Submit a task into the queue and cancel it (so it has a completed task referencing it)
     task_res = await client.post(
         "/api/v1/tasks",
         json={"task_type": "test_del_task", "queue": q_name, "payload": {"foo": "bar"}},
@@ -242,16 +231,13 @@ async def test_queue_deletion_and_task_reference_handling(client: AsyncClient) -
     cancel_res = await client.delete(f"/api/v1/tasks/{task_id}")
     assert cancel_res.status_code == 200
 
-    # 5. Attempt DELETE without force -> returns 409 Conflict (not 500)
     del_conflict = await client.delete(f"/api/v1/queues/{q_name}")
     assert del_conflict.status_code == 409
     assert "completed task(s)" in del_conflict.json()["error"]["message"]
 
-    # 6. Attempt DELETE with force=true -> returns 204 No Content
     del_force = await client.delete(f"/api/v1/queues/{q_name}?force=true")
     assert del_force.status_code == 204
 
-    # 7. Queue is now gone -> 404
     get_gone = await client.get(f"/api/v1/queues/{q_name}")
     assert get_gone.status_code == 404
 

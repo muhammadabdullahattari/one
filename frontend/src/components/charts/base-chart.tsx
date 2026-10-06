@@ -73,7 +73,7 @@ export function BaseChart({
       chart.dispose();
       chartInstanceRef.current = null;
     };
-  }, []); // Run on mount & unmount only
+  }, []);
 
   useEffect(() => {
     if (!chartInstanceRef.current) return;

@@ -24,8 +24,6 @@ def check_api() -> int:
 
 
 def check_process(name: str) -> int:
-    # Basic check to ensure the target process is running
-    # Checks /proc for Linux container environments
     if not os.path.exists("/proc"):
         return 0
     try:
