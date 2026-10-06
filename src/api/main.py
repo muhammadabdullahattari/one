@@ -99,6 +99,7 @@ def create_app() -> FastAPI:
     app.include_router(dlq_router, prefix=api_prefix)
     app.include_router(analytics_router, prefix=api_prefix)
     app.include_router(ws_router, prefix=api_prefix)
+    app.include_router(ws_router)
 
     def custom_openapi():
         if app.openapi_schema:

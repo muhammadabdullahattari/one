@@ -132,6 +132,7 @@ class WorkerRuntime:
                                 "type": "task.succeeded",
                                 "data": {
                                     "task_id": str(task_id),
+                                    "tenant_id": getattr(envelope, "tenant_id", "default"),
                                     "status": "SUCCEEDED",
                                     "duration_seconds": result.duration_seconds,
                                 },
@@ -173,6 +174,7 @@ class WorkerRuntime:
                                 "type": "task.failed",
                                 "data": {
                                     "task_id": str(task_id),
+                                    "tenant_id": getattr(envelope, "tenant_id", "default"),
                                     "status": "RETRY_WAIT" if retryable else "FAILED",
                                     "error_class": result.error_class,
                                 },

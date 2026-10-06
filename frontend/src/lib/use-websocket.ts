@@ -13,8 +13,10 @@ export interface WebSocketMessage<T = unknown> {
 export type ConnectionState = "connecting" | "connected" | "disconnected" | "error";
 
 interface UseWebSocketOptions<T = unknown> {
-  channel?: "tasks" | "workers" | "metrics" | "live";
+  channel?: "tasks" | "workers" | "metrics" | "live" | "queues";
   enabled?: boolean;
+  tenantId?: string;
+  token?: string;
   onMessage?: (message: WebSocketMessage<T>) => void;
   autoInvalidate?: boolean;
 }
@@ -22,6 +24,8 @@ interface UseWebSocketOptions<T = unknown> {
 export function useWebSocketSubscription<T = unknown>({
   channel = "live",
   enabled = true,
+  tenantId,
+  token,
   onMessage,
   autoInvalidate = true,
 }: UseWebSocketOptions<T> = {}) {
@@ -33,11 +37,17 @@ export function useWebSocketSubscription<T = unknown>({
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const reconnectAttemptsRef = useRef(0);
+  const intentionalDisconnectRef = useRef(false);
   const queryClient = useQueryClient();
 
   const getWsUrl = useCallback(() => {
+    const params = new URLSearchParams();
+    if (tenantId) params.set("tenant_id", tenantId);
+    if (token) params.set("token", token);
+    const qs = params.toString() ? `?${params.toString()}` : "";
+
     if (process.env.NEXT_PUBLIC_WS_URL) {
-      return `${process.env.NEXT_PUBLIC_WS_URL}/ws/${channel}`;
+      return `${process.env.NEXT_PUBLIC_WS_URL}/ws/${channel}${qs}`;
     }
     if (typeof window !== "undefined") {
       const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -45,18 +55,19 @@ export function useWebSocketSubscription<T = unknown>({
         window.location.hostname === "localhost"
           ? "127.0.0.1"
           : window.location.hostname;
-      return `${proto}//${host}:8000/api/v1/ws/${channel}`;
+      return `${proto}//${host}:8000/api/v1/ws/${channel}${qs}`;
     }
     const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api/v1";
     const wsBase = apiBase.replace(/^http:/, "ws:").replace(/^https:/, "wss:");
-    return `${wsBase}/ws/${channel}`;
-  }, [channel]);
+    return `${wsBase}/ws/${channel}${qs}`;
+  }, [channel, tenantId, token]);
 
   const handleMessage = useCallback(
     (event: MessageEvent) => {
       try {
         if (event.data === "pong") return;
         const parsed: WebSocketMessage<T> = JSON.parse(event.data);
+        if (parsed.type === "pong") return;
         setLastEvent(parsed);
 
         if (onMessage) {
@@ -91,6 +102,7 @@ export function useWebSocketSubscription<T = unknown>({
       return;
     }
 
+    intentionalDisconnectRef.current = false;
     setConnectionState("connecting");
     const url = getWsUrl();
 
@@ -124,7 +136,8 @@ export function useWebSocketSubscription<T = unknown>({
         if (heartbeatIntervalRef.current) clearInterval(heartbeatIntervalRef.current);
 
         // Exponential backoff reconnect: 1s, 2s, 4s, 8s, up to 15s
-        if (enabled) {
+        // Only reconnect if disconnection was unintentional and hook is still enabled
+        if (!intentionalDisconnectRef.current && enabled) {
           const delay = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 15000);
           reconnectAttemptsRef.current += 1;
           if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
@@ -133,12 +146,13 @@ export function useWebSocketSubscription<T = unknown>({
           }, delay);
         }
       };
-    } catch (err) {
+    } catch {
       setConnectionState("error");
     }
   }, [enabled, getWsUrl, handleMessage]);
 
   const disconnect = useCallback(() => {
+    intentionalDisconnectRef.current = true;
     if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
     if (heartbeatIntervalRef.current) clearInterval(heartbeatIntervalRef.current);
     if (socketRef.current) {

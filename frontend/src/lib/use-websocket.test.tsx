@@ -165,4 +165,34 @@ describe("WebSocket Real-Time Integration (Phase 11)", () => {
       expect(screen.getByText("task.succeeded")).toBeInTheDocument();
     });
   });
+
+  it("does not automatically reconnect when disconnect() is called intentionally", async () => {
+    let hookState: any;
+    function TestComponent() {
+      hookState = useWebSocketSubscription({ channel: "live" });
+      return <div>{hookState.connectionState}</div>;
+    }
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <TestComponent />
+      </QueryClientProvider>
+    );
+
+    await waitFor(() => {
+      expect(hookState.isConnected).toBe(true);
+    });
+
+    const initialInstancesCount = MockWebSocket.instances.length;
+
+    act(() => {
+      hookState.disconnect();
+    });
+
+    expect(hookState.connectionState).toBe("disconnected");
+
+    // Wait a brief period and ensure no new connection attempt was spawned
+    await new Promise((r) => setTimeout(r, 50));
+    expect(MockWebSocket.instances.length).toBe(initialInstancesCount);
+  });
 });
