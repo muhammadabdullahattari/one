@@ -1,0 +1,39 @@
+# Development Docker Compose configuration with live reloading
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile.api
+    command: ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    volumes:
+      - ./src:/app/src:ro
+      - ./alembic.ini:/app/alembic.ini:ro
+    environment:
+      - ENVIRONMENT=development
+      - LOG_LEVEL=DEBUG
+
+  worker:
+    volumes:
+      - ./src:/app/src:ro
+    environment:
+      - ENVIRONMENT=development
+      - LOG_LEVEL=DEBUG
+    deploy:
+      replicas: 1
+
+  scheduler:
+    volumes:
+      - ./src:/app/src:ro
+    environment:
+      - ENVIRONMENT=development
+      - LOG_LEVEL=DEBUG
+
+  frontend:
+    command: ["pnpm", "run", "dev"]
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+    environment:
+      - NODE_ENV=development

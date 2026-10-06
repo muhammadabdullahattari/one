@@ -1,0 +1,54 @@
+# syntax=docker/dockerfile:1.4
+# Multi-stage Dockerfile for Task Engine FastAPI Service
+# Meets SRS §16.1: Non-root user, pinned dependencies, baked source, health checks
+
+# ── Stage 1: Build virtual environment with uv ──────────────────────────────
+FROM python:3.14-slim AS builder
+
+WORKDIR /build
+
+# Install uv package manager
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
+
+# Copy dependency manifests
+COPY pyproject.toml uv.lock ./
+
+# Install production dependencies into isolated virtualenv
+ENV UV_PROJECT_ENVIRONMENT=/build/.venv
+RUN uv sync --frozen --no-dev --no-install-project
+
+# ── Stage 2: Runtime image ──────────────────────────────────────────────────
+FROM python:3.14-slim AS runner
+
+WORKDIR /app
+
+# Security: Create non-root system user and group (SRS §16.1)
+RUN groupadd -g 10001 appgroup && \
+    useradd -u 10001 -g appgroup -s /bin/bash -m appuser
+
+# Set runtime environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PATH="/app/.venv/bin:$PATH" \
+    PORT=8000
+
+# Copy virtualenv from builder
+COPY --from=builder /build/.venv /app/.venv
+
+# Copy application source, migrations, and scripts (SRS §16.1: baked immutable source)
+COPY src/ /app/src/
+COPY alembic.ini /app/alembic.ini
+COPY scripts/ /app/scripts/
+
+# Set ownership to non-root user
+RUN chown -R appuser:appgroup /app
+
+USER appuser
+
+EXPOSE 8000
+
+# Container Healthcheck (SRS §16.1)
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD python3 /app/scripts/healthcheck.py api || exit 1
+
+ENTRYPOINT ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
