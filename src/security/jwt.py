@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from uuid import uuid4
 
 from jose import jwt
 
@@ -19,6 +20,7 @@ def create_access_token(
         expire = now + timedelta(minutes=settings.access_token_expire_minutes)
     payload: dict[str, Any] = {
         "sub": subject,
+        "jti": uuid4().hex,
         "type": "access",
         "iat": int(now.timestamp()),
         "exp": int(expire.timestamp()),
@@ -55,6 +57,7 @@ def create_refresh_token(
         expire = now + timedelta(days=7)
     payload: dict[str, Any] = {
         "sub": subject,
+        "jti": uuid4().hex,
         "type": "refresh",
         "iat": int(now.timestamp()),
         "exp": int(expire.timestamp()),
