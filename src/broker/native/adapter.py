@@ -2,6 +2,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import func, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.broker.core.adapter import BrokerAdapter
 from src.broker.core.envelope import BrokerStats, TaskEnvelope, TaskMessage
@@ -19,20 +20,25 @@ class NativeBrokerAdapter(BrokerAdapter):
     def backend_name(self) -> str:
         return "native"
 
-    async def publish(self, queue: str, envelope: TaskEnvelope) -> str:
+    async def publish(
+        self, queue: str, envelope: TaskEnvelope, session: AsyncSession | None = None
+    ) -> str:
         now = datetime.now(UTC)
-        async with session_scope() as session:
-            stmt = (
-                update(TaskModel)
-                .where(TaskModel.task_id == envelope.task_id)
-                .values(
-                    status=TaskStatus.QUEUED.value,
-                    queue=queue,
-                    priority=envelope.priority,
-                    updated_at=now,
-                )
+        stmt = (
+            update(TaskModel)
+            .where(TaskModel.task_id == envelope.task_id)
+            .values(
+                status=TaskStatus.QUEUED.value,
+                queue=queue,
+                priority=envelope.priority,
+                updated_at=now,
             )
+        )
+        if session is not None:
             await session.execute(stmt)
+        else:
+            async with session_scope() as sess:
+                await sess.execute(stmt)
         return str(envelope.task_id)
 
     async def consume(

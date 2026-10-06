@@ -40,7 +40,7 @@ class ScheduleRepository(BaseRepository[ScheduleModel]):
         m = res.scalar_one_or_none()
         return self._to_entity(m) if m else None
 
-    async def get_due_schedules(self, now_utc: datetime, limit: int = 50) -> list[Schedule]:
+    async def get_due_schedules(self, now_utc: datetime, limit: int = 500) -> list[Schedule]:
         stmt = (
             select(ScheduleModel)
             .where(

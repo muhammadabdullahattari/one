@@ -108,48 +108,55 @@ class WorkerRuntime:
                 payload=envelope.payload,
                 timeout_seconds=envelope.timeout_seconds,
             )
-            async with session_scope() as session:
-                task_repo = TaskRepository(session)
-                if result.success:
+            if result.success:
+                async with session_scope() as session:
+                    task_repo = TaskRepository(session)
                     inline_res, res_ref = await self.result_backend.store_result(
                         task_id, result.result
                     )
                     await task_repo.complete_task(
                         task_id=task_id, attempt_id=None, result_data=inline_res, result_ref=res_ref
                     )
-                    await self.broker.acknowledge(message.queue, message.message_id)
-                    logger.info(
-                        "Task completed successfully",
-                        task_id=str(task_id),
-                        duration=result.duration_seconds,
-                    )
-                    try:
-                        from src.api.routers.ws import ws_manager
+                await self.broker.acknowledge(message.queue, message.message_id)
+                logger.info(
+                    "Task completed successfully",
+                    task_id=str(task_id),
+                    duration=result.duration_seconds,
+                )
+                try:
+                    from src.api.routers.ws import ws_manager
 
-                        await ws_manager.broadcast(
-                            "tasks",
-                            {
-                                "type": "task.succeeded",
-                                "data": {
-                                    "task_id": str(task_id),
-                                    "tenant_id": getattr(envelope, "tenant_id", "default"),
-                                    "status": "SUCCEEDED",
-                                    "duration_seconds": result.duration_seconds,
-                                },
+                    await ws_manager.broadcast(
+                        "tasks",
+                        {
+                            "type": "task.succeeded",
+                            "data": {
+                                "task_id": str(task_id),
+                                "tenant_id": getattr(envelope, "tenant_id", "default"),
+                                "status": "SUCCEEDED",
+                                "duration_seconds": result.duration_seconds,
                             },
-                        )
-                    except Exception:
-                        pass
-                else:
-                    retryable = default_retry_policy.is_retryable(
-                        attempt=envelope.attempt_count + 1,
+                        },
+                    )
+                except Exception:
+                    pass
+            else:
+                max_att = envelope.max_attempts or self.settings.default_max_attempts
+                current_attempt = envelope.attempt_count + 1
+                retryable = (
+                    default_retry_policy.is_retryable(
+                        attempt=current_attempt,
                         exception=result.error_class or "UnknownError",
                     )
-                    next_retry = (
-                        default_retry_policy.compute_next_retry_time(envelope.attempt_count + 1)
-                        if retryable
-                        else None
-                    )
+                    and (current_attempt < max_att)
+                )
+                next_retry = (
+                    default_retry_policy.compute_next_retry_time(current_attempt)
+                    if retryable
+                    else None
+                )
+                async with session_scope() as session:
+                    task_repo = TaskRepository(session)
                     await task_repo.fail_task(
                         task_id=task_id,
                         attempt_id=None,
@@ -158,30 +165,30 @@ class WorkerRuntime:
                         retryable=retryable,
                         next_retry_at=next_retry,
                     )
-                    await self.broker.nack(message.queue, message.message_id, requeue=retryable)
-                    logger.warn(
-                        "Task execution failed",
-                        task_id=str(task_id),
-                        error=result.error_message,
-                        retryable=retryable,
-                    )
-                    try:
-                        from src.api.routers.ws import ws_manager
+                await self.broker.nack(message.queue, message.message_id, requeue=retryable)
+                logger.warn(
+                    "Task execution failed",
+                    task_id=str(task_id),
+                    error=result.error_message,
+                    retryable=retryable,
+                )
+                try:
+                    from src.api.routers.ws import ws_manager
 
-                        await ws_manager.broadcast(
-                            "tasks",
-                            {
-                                "type": "task.failed",
-                                "data": {
-                                    "task_id": str(task_id),
-                                    "tenant_id": getattr(envelope, "tenant_id", "default"),
-                                    "status": "RETRY_WAIT" if retryable else "FAILED",
-                                    "error_class": result.error_class,
-                                },
+                    await ws_manager.broadcast(
+                        "tasks",
+                        {
+                            "type": "task.failed",
+                            "data": {
+                                "task_id": str(task_id),
+                                "tenant_id": getattr(envelope, "tenant_id", "default"),
+                                "status": "RETRY_WAIT" if retryable else "FAILED",
+                                "error_class": result.error_class,
                             },
-                        )
-                    except Exception:
-                        pass
+                        },
+                    )
+                except Exception:
+                    pass
         except Exception as exc:
             logger.error("Unhandled error processing task", task_id=str(task_id), error=str(exc))
         finally:

@@ -9,7 +9,7 @@ from src.persistence.repositories.base import BaseRepository
 
 
 class OutboxRepository(BaseRepository[TaskOutboxModel]):
-    async def get_undelivered(self, limit: int = 100) -> list[TaskOutbox]:
+    async def get_undelivered(self, limit: int = 1000) -> list[TaskOutbox]:
         now = datetime.now(UTC)
         stmt = (
             select(TaskOutboxModel)
@@ -37,6 +37,24 @@ class OutboxRepository(BaseRepository[TaskOutboxModel]):
             )
             for m in res.scalars().all()
         ]
+
+    async def get_by_task_id(self, task_id: UUID) -> TaskOutbox | None:
+        stmt = select(TaskOutboxModel).where(TaskOutboxModel.task_id == task_id)
+        res = await self.session.execute(stmt)
+        m = res.scalar_one_or_none()
+        if not m:
+            return None
+        return TaskOutbox(
+            outbox_id=m.outbox_id,
+            task_id=m.task_id,
+            event_type=m.event_type,
+            payload=m.payload,
+            created_at=m.created_at,
+            published_at=m.published_at,
+            attempts=m.attempts,
+            last_error=m.last_error,
+            next_attempt_at=m.next_attempt_at,
+        )
 
     async def mark_published(self, outbox_id: UUID) -> None:
         now = datetime.now(UTC)

@@ -65,7 +65,12 @@ class OutboxPublisher:
                         attempt_count=task.attempt_count,
                         created_at=task.created_at,
                     )
-                    await adapter.publish(task.queue, envelope)
+                    from src.broker.native.adapter import NativeBrokerAdapter
+
+                    if isinstance(adapter, NativeBrokerAdapter):
+                        await adapter.publish(task.queue, envelope, session=session)
+                    else:
+                        await adapter.publish(task.queue, envelope)
                     await outbox_repo.mark_published(entry.outbox_id)
                     published_count += 1
                 except Exception as exc:

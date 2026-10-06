@@ -69,6 +69,10 @@ class TaskRepository(BaseRepository[TaskModel]):
         await self.session.flush()
         return task
 
+    async def create_task(self, task: Task) -> Task:
+        outbox = TaskOutbox(task_id=task.task_id, event_type="task.created", payload=task.payload or {})
+        return await self.create_with_outbox(task, outbox)
+
     async def gettaskeventdata(self) -> TaskEventsData | None:
         query = select(TaskModel).limit(1)
         res = await self.session.execute(query)

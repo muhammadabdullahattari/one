@@ -17,12 +17,18 @@ class TokenBucketRateLimiter:
     ) -> None:
         self._redis = redis or redis_client
         self.fail_closed = fail_closed
+        self._redis_available = True
         self._in_memory_buckets: dict[str, tuple[float, float]] = {}
 
     def _get_redis(self) -> aioredis.Redis:
         if self._redis is None:
             settings = get_settings()
-            self._redis = aioredis.from_url(settings.redis_url, decode_responses=True)
+            self._redis = aioredis.from_url(
+                settings.redis_url,
+                decode_responses=True,
+                socket_connect_timeout=0.2,
+                socket_timeout=0.2,
+            )
         return self._redis
 
     async def acquire(
@@ -31,6 +37,8 @@ class TokenBucketRateLimiter:
         capacity = burst_capacity or rate_limit_rps
         now = time.time()
         bucket_key = f"rate_limit:{key}"
+        if not self._redis_available:
+            return self._acquire_in_memory(key, rate_limit_rps, capacity, cost, now)
         try:
             r = self._get_redis()
             res: list[Any] = await r.eval(
@@ -39,6 +47,7 @@ class TokenBucketRateLimiter:
             allowed = bool(res[0] == 1)
             return allowed
         except Exception:
+            self._redis_available = False
             if self.fail_closed:
                 return False
             return self._acquire_in_memory(key, rate_limit_rps, capacity, cost, now)
