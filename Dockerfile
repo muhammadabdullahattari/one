@@ -1,8 +1,3 @@
-# syntax=docker/dockerfile:1.4
-# Unified Multi-stage Dockerfile for Task Engine Services
-# Targets: api, worker, scheduler
-# Meets SRS §16.1
-
 FROM python:3.14-slim AS builder
 WORKDIR /build
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
@@ -19,6 +14,7 @@ ENV PYTHONUNBUFFERED=1 \
     PATH="/app/.venv/bin:$PATH"
 COPY --from=builder /build/.venv /app/.venv
 COPY src/ /app/src/
+COPY task_engine/ /app/task_engine/
 COPY alembic.ini /app/alembic.ini
 COPY scripts/ /app/scripts/
 RUN chown -R appuser:appgroup /app

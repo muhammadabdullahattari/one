@@ -39,7 +39,7 @@ services:
     image: task-engine-worker:latest
     pull_policy: build
     restart: unless-stopped
-    command: ["python3", "-m", "src.sdk.cli", "worker", "start", "--queues", "default,high,low", "--concurrency", "4"]
+    command: ["--queues", "default,high,low", "--concurrency", "4"]
     env_file:
       - path: .env
         required: false
@@ -65,7 +65,7 @@ services:
     pull_policy: build
     container_name: task-engine-scheduler
     restart: unless-stopped
-    command: ["python3", "-m", "src.sdk.cli", "scheduler", "start"]
+    command: []
     env_file:
       - path: .env
         required: false

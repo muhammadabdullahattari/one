@@ -36,6 +36,7 @@ COPY --from=builder /build/.venv /app/.venv
 
 # Copy application source, migrations, and scripts
 COPY src/ /app/src/
+COPY task_engine/ /app/task_engine/
 COPY alembic.ini /app/alembic.ini
 COPY scripts/ /app/scripts/
 

@@ -1,8 +1,10 @@
 import asyncio
+import inspect
 import time
 from typing import Any
 
 import structlog
+from task_engine.context import TaskContext, set_current_context
 
 from src.domain.task_registry import TaskRegistry, global_task_registry
 
@@ -29,8 +31,55 @@ class TaskExecutor:
     def __init__(self, registry: TaskRegistry | None = None) -> None:
         self.registry = registry or global_task_registry
 
+    def _prepare_call(
+        self, handler: Any, payload: dict[str, Any] | None, context: TaskContext | None
+    ) -> tuple[list[Any], dict[str, Any]]:
+        sig = inspect.signature(handler)
+        params = list(sig.parameters.values())
+        data = payload or {}
+
+        if len(params) == 2 and any(p.name in {"context", "ctx"} for p in params):
+            if params[0].name in {"context", "ctx"}:
+                return [context, data], {}
+            return [data, context], {}
+
+        if len(params) == 2 and not any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params):
+            return [data, context], {}
+
+        if "args" in data and isinstance(data["args"], list | tuple):
+            pos_args = list(data["args"])
+            kw_args = dict(data.get("kwargs", {}))
+            if any(p.name in {"context", "ctx"} for p in params):
+                kw_args["context"] = context
+            return pos_args, kw_args
+
+        kwargs = dict(data)
+        if (
+            any(p.name in {"context", "ctx"} for p in params)
+            and "context" not in kwargs
+            and "ctx" not in kwargs
+        ):
+            for p in params:
+                if p.name in {"context", "ctx"}:
+                    kwargs[p.name] = context
+                    break
+
+        if len(params) == 1 and params[0].kind not in (
+            inspect.Parameter.VAR_KEYWORD,
+            inspect.Parameter.VAR_POSITIONAL,
+        ):
+            param_name = params[0].name
+            if param_name not in kwargs:
+                return [data], {}
+
+        return [], kwargs
+
     async def execute(
-        self, task_type: str, payload: dict[str, Any] | None, timeout_seconds: int = 300
+        self,
+        task_type: str,
+        payload: dict[str, Any] | None,
+        timeout_seconds: int = 300,
+        context: TaskContext | None = None,
     ) -> TaskExecutionResult:
         start_time = time.perf_counter()
         try:
@@ -43,15 +92,18 @@ class TaskExecutor:
                 error_message=str(exc),
                 duration_seconds=duration,
             )
-        kwargs = payload or {}
+
+        set_current_context(context)
         try:
+            args, kwargs = self._prepare_call(task_def.handler, payload, context)
             if task_def.is_async:
                 result = await asyncio.wait_for(
-                    task_def.handler(**kwargs), timeout=float(timeout_seconds)
+                    task_def.handler(*args, **kwargs), timeout=float(timeout_seconds)
                 )
             else:
                 result = await asyncio.wait_for(
-                    asyncio.to_thread(task_def.handler, **kwargs), timeout=float(timeout_seconds)
+                    asyncio.to_thread(task_def.handler, *args, **kwargs),
+                    timeout=float(timeout_seconds),
                 )
             duration = time.perf_counter() - start_time
             return TaskExecutionResult(success=True, result=result, duration_seconds=duration)
@@ -77,3 +129,5 @@ class TaskExecutor:
                 error_message=error_message,
                 duration_seconds=duration,
             )
+        finally:
+            set_current_context(None)

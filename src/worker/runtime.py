@@ -4,6 +4,7 @@ import socket
 from uuid import uuid4
 
 import structlog
+from task_engine.context import TaskContext
 
 from src.broker.core.adapter import BrokerAdapter
 from src.broker.core.envelope import TaskMessage
@@ -103,10 +104,21 @@ class WorkerRuntime:
         task_id = envelope.task_id
         try:
             logger.info("Executing task", task_id=str(task_id), task_type=envelope.task_type)
+            context = TaskContext(
+                task_id=str(task_id),
+                idempotency_key=getattr(envelope, "idempotency_key", None),
+                attempt=envelope.attempt_count + 1,
+                queue=envelope.queue or message.queue,
+                priority=envelope.priority,
+                headers=getattr(envelope, "headers", {}),
+                tenant_id=getattr(envelope, "tenant_id", "default"),
+                created_at=envelope.created_at,
+            )
             result = await self.executor.execute(
                 task_type=envelope.task_type,
                 payload=envelope.payload,
                 timeout_seconds=envelope.timeout_seconds,
+                context=context,
             )
             if result.success:
                 async with session_scope() as session:

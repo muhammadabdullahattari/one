@@ -37,6 +37,7 @@ COPY --from=builder /build/.venv /app/.venv
 
 # Copy application source, migrations, and scripts (SRS §16.1: baked immutable source)
 COPY src/ /app/src/
+COPY task_engine/ /app/task_engine/
 COPY alembic.ini /app/alembic.ini
 COPY scripts/ /app/scripts/
 
@@ -51,4 +52,4 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD python3 /app/scripts/healthcheck.py api || exit 1
 
-ENTRYPOINT ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT ["python3", "-m", "uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
