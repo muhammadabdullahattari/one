@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 import httpx
@@ -96,6 +96,12 @@ class TaskEngineClient:
         raise TaskEngineError(
             f"API request failed with status {response.status_code}: {response.text}"
         )
+
+    def _handle_dict(self, response: httpx.Response) -> dict[str, Any]:
+        return cast(dict[str, Any], self._handle_response(response))
+
+    def _handle_list(self, response: httpx.Response) -> list[dict[str, Any]]:
+        return cast(list[dict[str, Any]], self._handle_response(response))
 
     def submit(
         self,
@@ -303,10 +309,10 @@ class TaskEngineClient:
 
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
                 future = executor.submit(asyncio.run, self.get_task_async(task_id))
-                return future.result()
+                return cast(dict[str, Any], future.result())
         client = self._get_sync_client()
         resp = client.get(f"/api/v1/tasks/{task_id}")
-        return self._handle_response(resp)
+        return self._handle_dict(resp)
 
     async def get_task_async(self, task_id: str) -> dict[str, Any]:
         if self.direct_mode:
@@ -338,7 +344,7 @@ class TaskEngineClient:
                 }
         client = self._get_async_client()
         resp = await client.get(f"/api/v1/tasks/{task_id}")
-        return self._handle_response(resp)
+        return self._handle_dict(resp)
 
     def get_result(self, task_id: str) -> dict[str, Any]:
         task_data = self.get_task(task_id)
@@ -363,14 +369,14 @@ class TaskEngineClient:
     ) -> dict[str, Any]:
         client = self._get_sync_client()
         resp = client.delete(f"/api/v1/tasks/{task_id}", params={"reason": reason})
-        return self._handle_response(resp)
+        return self._handle_dict(resp)
 
     async def cancel_task_async(
         self, task_id: str, reason: str = "User requested cancellation"
     ) -> dict[str, Any]:
         client = self._get_async_client()
         resp = await client.delete(f"/api/v1/tasks/{task_id}", params={"reason": reason})
-        return self._handle_response(resp)
+        return self._handle_dict(resp)
 
     def retry_task(
         self, task_id: str, delay_seconds: int = 0, reset_attempts: bool = False
@@ -380,7 +386,7 @@ class TaskEngineClient:
             f"/api/v1/tasks/{task_id}/retry",
             json={"delay_seconds": delay_seconds, "reset_attempts": reset_attempts},
         )
-        return self._handle_response(resp)
+        return self._handle_dict(resp)
 
     async def retry_task_async(
         self, task_id: str, delay_seconds: int = 0, reset_attempts: bool = False
@@ -390,7 +396,7 @@ class TaskEngineClient:
             f"/api/v1/tasks/{task_id}/retry",
             json={"delay_seconds": delay_seconds, "reset_attempts": reset_attempts},
         )
-        return self._handle_response(resp)
+        return self._handle_dict(resp)
 
     def register_schedule(
         self,
@@ -415,7 +421,7 @@ class TaskEngineClient:
         elif interval_seconds:
             body["interval_seconds"] = interval_seconds
         resp = client.post("/api/v1/schedules", json=body)
-        return self._handle_response(resp)
+        return self._handle_dict(resp)
 
     async def register_schedule_async(
         self,
@@ -440,7 +446,7 @@ class TaskEngineClient:
         elif interval_seconds:
             body["interval_seconds"] = interval_seconds
         resp = await client.post("/api/v1/schedules", json=body)
-        return self._handle_response(resp)
+        return self._handle_dict(resp)
 
     def list_tasks(
         self,
@@ -459,8 +465,8 @@ class TaskEngineClient:
         if task_type:
             params["task_type"] = task_type
         resp = client.get("/api/v1/tasks", params=params)
-        data = self._handle_response(resp)
-        return data.get("items", [])
+        data = self._handle_dict(resp)
+        return cast(list[dict[str, Any]], data.get("items", []))
 
     async def list_tasks_async(
         self,
@@ -479,28 +485,28 @@ class TaskEngineClient:
         if task_type:
             params["task_type"] = task_type
         resp = await client.get("/api/v1/tasks", params=params)
-        data = self._handle_response(resp)
-        return data.get("items", [])
+        data = self._handle_dict(resp)
+        return cast(list[dict[str, Any]], data.get("items", []))
 
     def list_queues(self) -> list[dict[str, Any]]:
         client = self._get_sync_client()
         resp = client.get("/api/v1/queues")
-        return self._handle_response(resp)
+        return self._handle_list(resp)
 
     async def list_queues_async(self) -> list[dict[str, Any]]:
         client = self._get_async_client()
         resp = await client.get("/api/v1/queues")
-        return self._handle_response(resp)
+        return self._handle_list(resp)
 
     def list_workers(self) -> list[dict[str, Any]]:
         client = self._get_sync_client()
         resp = client.get("/api/v1/workers")
-        return self._handle_response(resp)
+        return self._handle_list(resp)
 
     async def list_workers_async(self) -> list[dict[str, Any]]:
         client = self._get_async_client()
         resp = await client.get("/api/v1/workers")
-        return self._handle_response(resp)
+        return self._handle_list(resp)
 
     def ping(self) -> bool:
         try:
@@ -521,12 +527,12 @@ class TaskEngineClient:
     def health(self) -> dict[str, Any]:
         client = self._get_sync_client()
         resp = client.get("/health/ready")
-        return self._handle_response(resp)
+        return self._handle_dict(resp)
 
     async def health_async(self) -> dict[str, Any]:
         client = self._get_async_client()
         resp = await client.get("/health/ready")
-        return self._handle_response(resp)
+        return self._handle_dict(resp)
 
     def close(self) -> None:
         if self._sync_client and not self._sync_client.is_closed:

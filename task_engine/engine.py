@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from task_engine.client import TaskEngineClient
 from task_engine.decorator import TaskWrapper, task
@@ -70,7 +70,7 @@ class TaskEngine:
                 description=description,
                 client=self.client,
             )
-            return wrapper
+            return cast(TaskWrapper, wrapper)
 
         return decorator
 
