@@ -42,8 +42,10 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
-# ── Node (frontend) ───────────────────────────
+# ── Node (frontend & SDKs) ─────────────────────────
+node_modules/
 frontend/node_modules/
+packages/*/node_modules/
 frontend/.next/
 frontend/.pnpm-store/
 

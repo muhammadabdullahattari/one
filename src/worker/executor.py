@@ -38,29 +38,29 @@ class TaskExecutor:
         params = list(sig.parameters.values())
         data = payload or {}
 
-        if len(params) == 2 and any(p.name in {"context", "ctx"} for p in params):
-            if params[0].name in {"context", "ctx"}:
-                return [context, data], {}
-            return [data, context], {}
+        def _is_ctx(param: inspect.Parameter) -> bool:
+            return (
+                param.name in {"context", "ctx"}
+                or getattr(param.annotation, "__name__", "") == "TaskContext"
+                or str(param.annotation).endswith("TaskContext")
+            )
 
-        if len(params) == 2 and not any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params):
+        if len(params) == 2 and any(_is_ctx(p) for p in params):
+            if _is_ctx(params[0]):
+                return [context, data], {}
             return [data, context], {}
 
         if "args" in data and isinstance(data["args"], list | tuple):
             pos_args = list(data["args"])
             kw_args = dict(data.get("kwargs", {}))
-            if any(p.name in {"context", "ctx"} for p in params):
+            if any(_is_ctx(p) for p in params):
                 kw_args["context"] = context
             return pos_args, kw_args
 
         kwargs = dict(data)
-        if (
-            any(p.name in {"context", "ctx"} for p in params)
-            and "context" not in kwargs
-            and "ctx" not in kwargs
-        ):
+        if any(_is_ctx(p) for p in params) and "context" not in kwargs and "ctx" not in kwargs:
             for p in params:
-                if p.name in {"context", "ctx"}:
+                if _is_ctx(p):
                     kwargs[p.name] = context
                     break
 
