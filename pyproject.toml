@@ -1,5 +1,5 @@
 [project]
-name = "task-engine"
+name = "distributed-task-engine"
 version = "0.1.0"
 requires-python = ">=3.14"
 description = "Event-Driven Distributed Task Processing Engine v5.0"

@@ -1,4 +1,4 @@
-# TypeScript & Node.js SDK Reference (`@task-engine/sdk`)
+# TypeScript & Node.js SDK Reference (`@abdullah_mog/task-engine`)
 
 The official TypeScript and Node.js client SDK for the Event-Driven Distributed Task Processing Engine. Provides full type safety, Promise-based ergonomic APIs, WebSocket real-time subscription, and universal Node.js/browser compatibility.
 
@@ -7,11 +7,11 @@ The official TypeScript and Node.js client SDK for the Event-Driven Distributed 
 ## 1. Installation
 
 ```bash
-npm install @task-engine/sdk
+npm install @abdullah_mog/task-engine
 # or
-pnpm add @task-engine/sdk
+pnpm add @abdullah_mog/task-engine
 # or
-yarn add @task-engine/sdk
+yarn add @abdullah_mog/task-engine
 ```
 
 Requirements: Node.js >= 18 (Node.js 20+ or 22+ recommended) or modern browser / Edge runtime with native `fetch` support.
@@ -23,7 +23,7 @@ Requirements: Node.js >= 18 (Node.js 20+ or 22+ recommended) or modern browser /
 ### Submitting Tasks and Awaiting Results
 
 ```typescript
-import { TaskEngine } from "@task-engine/sdk";
+import { TaskEngine } from "@abdullah_mog/task-engine";
 
 const engine = new TaskEngine({
   apiUrl: process.env.TASK_ENGINE_API_URL || "http://localhost:8000",
@@ -57,7 +57,7 @@ main().catch(console.error);
 ### Real-Time Updates via WebSockets
 
 ```typescript
-import { TaskEngineWebSocket } from "@task-engine/sdk";
+import { TaskEngineWebSocket } from "@abdullah_mog/task-engine";
 
 const ws = new TaskEngineWebSocket({
   apiUrl: "http://localhost:8000",
@@ -86,7 +86,7 @@ ws.connect();
 The high-level client interface for interacting with the distributed task engine.
 
 ```typescript
-import { TaskEngine, TaskEngineClient } from "@task-engine/sdk";
+import { TaskEngine, TaskEngineClient } from "@abdullah_mog/task-engine";
 
 const engine = new TaskEngine({
   apiUrl: "http://localhost:8000",
@@ -191,7 +191,7 @@ import {
   TaskCancelledError,
   AuthenticationError,
   ConnectionError,
-} from "@task-engine/sdk";
+} from "@abdullah_mog/task-engine";
 
 try {
   const result = await engine.submitTask({ taskType: "test" });
@@ -219,14 +219,14 @@ try {
 
 ## 5. Dual Module Support (CJS & ESM)
 
-`@task-engine/sdk` ships with dual exports and TypeScript `.d.ts` declaration maps:
+`@abdullah_mog/task-engine` ships with dual exports and TypeScript `.d.ts` declaration maps:
 
 ### ECMAScript Modules (ESM)
 ```typescript
-import { TaskEngine } from "@task-engine/sdk";
+import { TaskEngine } from "@abdullah_mog/task-engine";
 ```
 
 ### CommonJS (CJS)
 ```javascript
-const { TaskEngine } = require("@task-engine/sdk");
+const { TaskEngine } = require("@abdullah_mog/task-engine");
 ```

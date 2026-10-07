@@ -1,4 +1,4 @@
-# Python SDK Reference (`task-engine`)
+# Python SDK Reference (`distributed-task-engine`)
 
 The official Python client SDK and CLI for the Event-Driven Distributed Task Processing Engine. Designed to deliver a Celery-like developer ergonomics with zero-extra-infrastructure requirements on PostgreSQL.
 
@@ -7,7 +7,7 @@ The official Python client SDK and CLI for the Event-Driven Distributed Task Pro
 ## 1. Installation
 
 ```bash
-pip install task-engine
+pip install distributed-task-engine
 ```
 
 Compatible with Python >= 3.14.

@@ -26,10 +26,10 @@
 
 ## Quickstart
 
-### Python Quickstart (`task-engine`)
+### Python Quickstart (`distributed-task-engine`)
 
 ```bash
-pip install task-engine
+pip install distributed-task-engine
 ```
 
 Define a background task in `tasks.py`:
@@ -64,18 +64,18 @@ print(f"Task finished: {output}")
 
 ---
 
-### TypeScript / Node.js Quickstart (`@task-engine/sdk`)
+### TypeScript / Node.js Quickstart (`@abdullah_mog/task-engine`)
 
 ```bash
-npm install @task-engine/sdk
+npm install @abdullah_mog/task-engine
 # or
-pnpm add @task-engine/sdk
+pnpm add @abdullah_mog/task-engine
 ```
 
 Submit tasks and poll results with complete type safety:
 
 ```typescript
-import { TaskEngine } from "@task-engine/sdk";
+import { TaskEngine } from "@abdullah_mog/task-engine";
 
 const engine = new TaskEngine({
   apiUrl: process.env.TASK_ENGINE_API_URL || "http://localhost:8000",
@@ -101,7 +101,7 @@ run();
 Subscribe to real-time events over WebSockets:
 
 ```typescript
-import { TaskEngineWebSocket } from "@task-engine/sdk";
+import { TaskEngineWebSocket } from "@abdullah_mog/task-engine";
 
 const ws = new TaskEngineWebSocket({
   apiUrl: "http://localhost:8000",
