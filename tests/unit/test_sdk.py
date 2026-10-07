@@ -1,4 +1,5 @@
 import asyncio
+import re
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -23,7 +24,11 @@ from task_engine import (
     task,
 )
 
-runner = CliRunner()
+runner = CliRunner(env={"NO_COLOR": "1"})
+
+
+def _clean(text: str) -> str:
+    return re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", text)
 
 
 def test_task_engine_init_and_from_env() -> None:
@@ -330,20 +335,23 @@ def test_cli_subcommands_help() -> None:
         assert result.exit_code == 0
 
     sub_result = runner.invoke(app, ["submit", "--help"])
-    assert "--payload" in sub_result.output
-    assert "--queue" in sub_result.output
-    assert "--priority" in sub_result.output
-    assert "--idempotency-key" in sub_result.output
+    sub_out = _clean(sub_result.output)
+    assert "--payload" in sub_out
+    assert "--queue" in sub_out
+    assert "--priority" in sub_out
+    assert "--idempotency-key" in sub_out
 
 
 def test_cli_worker_and_scheduler_subcommands() -> None:
     w_res = runner.invoke(app, ["worker", "--help"])
     assert w_res.exit_code == 0
-    assert "--app" in w_res.output
-    assert "--queues" in w_res.output
-    assert "--concurrency" in w_res.output
+    w_out = _clean(w_res.output)
+    assert "--app" in w_out
+    assert "--queues" in w_out
+    assert "--concurrency" in w_out
 
     s_res = runner.invoke(app, ["scheduler", "--help"])
     assert s_res.exit_code == 0
-    assert "--app" in s_res.output
-    assert "--leader-lock-key" in s_res.output
+    s_out = _clean(s_res.output)
+    assert "--app" in s_out
+    assert "--leader-lock-key" in s_out
