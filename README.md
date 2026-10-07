@@ -3,10 +3,12 @@
 > **Event-Driven Distributed Task Processing Engine**  
 > Celery-like developer ergonomics with zero-extra-infrastructure on PostgreSQL, or enterprise-grade sub-millisecond throughput on Redis Streams.
 
+[![PyPI version](https://img.shields.io/pypi/v/distributed-task-engine.svg?color=blue)](https://pypi.org/project/distributed-task-engine/)
+[![npm version](https://img.shields.io/npm/v/@abdullah_mog/task-engine.svg?color=cb3837)](https://www.npmjs.com/package/@abdullah_mog/task-engine)
 [![Python Version](https://img.shields.io/badge/python-3.14%2B-blue.svg)](https://python.org)
 [![TypeScript](https://img.shields.io/badge/typescript-5.5%2B-blue.svg)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Architecture](https://img.shields.io/badge/architecture-event--driven-orange.svg)](#architecture)
+[![GitHub release](https://img.shields.io/github/v/release/muhammadabdullahattari/one?color=green)](https://github.com/muhammadabdullahattari/one/releases)
 
 ---
 
@@ -14,7 +16,7 @@
 
 * **Zero-Extra-Infrastructure Mode**: Run background tasks, delayed jobs, and retries natively on PostgreSQL using ACID transactional guarantees and `FOR UPDATE SKIP LOCKED`. No Redis or RabbitMQ required for small-to-medium deployments.
 * **Enterprise High-Throughput Broker**: Scale to millions of tasks with Redis Streams consumer groups (`XREADGROUP`, `XACK`) with sub-millisecond dispatch.
-* **Dual Language SDKs**: Full-featured clients for Python (`task-engine`) and TypeScript / Node.js (`@task-engine/sdk`).
+* **Dual Language SDKs**: Full-featured clients for Python (`distributed-task-engine` on PyPI) and TypeScript / Node.js (`@abdullah_mog/task-engine` on npm).
 * **Celery-like Ergonomics**: Decorate functions with `@engine.task` or `@task`, dispatch with `.delay()` or `.apply_async()`, and track results via `AsyncResult`.
 * **Distributed Cron & Scheduling**: Crontab and interval scheduling with automatic leader election via PostgreSQL advisory locks.
 * **Resilience & Fault Tolerance**: Heartbeat leases (`lease_expires_at`), automatic re-queueing of crashed worker tasks, exponential backoff retries with jitter, and dead-letter queue (DLQ) re-driving.
