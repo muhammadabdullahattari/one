@@ -79,7 +79,7 @@ def _run_worker(
     typer.echo(
         f"Starting Task Engine worker {runtime.worker_id} on queues: {queue_list} (broker: {broker})"
     )
-    typer.echo("Web Operations Console: http://localhost:3000")
+    typer.echo("Flower Operations Console: http://localhost:5555")
 
     try:
         loop.run_until_complete(runtime.start())
@@ -199,16 +199,15 @@ def scheduler_start(
     _run_scheduler(app_module=app_module, leader_lock_key=leader_lock_key)
 
 
-@app.command(name="ui")
-def ui_cmd(
+@app.command(name="flower")
+def flower_cmd(
     host: Annotated[str, typer.Option("--host", "-h", help="Bind network host")] = "0.0.0.0",
-    port: Annotated[int, typer.Option("--port", "-p", help="API service port")] = 8000,
+    port: Annotated[int, typer.Option("--port", "-p", help="Flower console port")] = 5555,
     reload: Annotated[bool, typer.Option("--reload", help="Enable live auto-reloading")] = False,
     workers: Annotated[int, typer.Option("--workers", help="Uvicorn worker count")] = 1,
 ) -> None:
     settings = get_settings()
-    typer.echo(f"Starting Task Engine API on http://{host}:{port}")
-    typer.echo("  Web Operations Console: http://localhost:3000")
+    typer.echo(f"Starting Task Engine Flower Console on http://{host}:{port}")
     uvicorn.run(
         "src.api.main:app",
         host=host,
@@ -219,6 +218,16 @@ def ui_cmd(
     )
 
 
+@app.command(name="ui")
+def ui_cmd(
+    host: Annotated[str, typer.Option("--host", "-h", help="Bind network host")] = "0.0.0.0",
+    port: Annotated[int, typer.Option("--port", "-p", help="Console service port")] = 5555,
+    reload: Annotated[bool, typer.Option("--reload", help="Enable live auto-reloading")] = False,
+    workers: Annotated[int, typer.Option("--workers", help="Uvicorn worker count")] = 1,
+) -> None:
+    flower_cmd(host=host, port=port, reload=reload, workers=workers)
+
+
 @api_app.command(name="start")
 def api_start_cmd(
     host: Annotated[str, typer.Option("--host", "-h", help="Bind network host")] = "0.0.0.0",
@@ -226,7 +235,16 @@ def api_start_cmd(
     reload: Annotated[bool, typer.Option("--reload", help="Enable live auto-reloading")] = False,
     workers: Annotated[int, typer.Option("--workers", help="Uvicorn worker count")] = 1,
 ) -> None:
-    ui_cmd(host=host, port=port, reload=reload, workers=workers)
+    settings = get_settings()
+    typer.echo(f"Starting Task Engine API on http://{host}:{port}")
+    uvicorn.run(
+        "src.api.main:app",
+        host=host,
+        port=port,
+        reload=reload,
+        workers=workers if not reload else 1,
+        log_level=settings.log_level.lower(),
+    )
 
 
 @app.command(name="migrate")

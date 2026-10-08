@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     app_env: AppEnv = Field(
         default=AppEnv.DEVELOPMENT, description="Application runtime environment (SRS §19)."
     )
-    app_version: str = Field(default="0.1.1", description="Application version string.")
+    app_version: str = Field(default="0.1.2", description="Application version string.")
     database_url: str = Field(
         default="postgresql+asyncpg://postgres:postgres@localhost:5432/task_engine_dev",
         description="PostgreSQL async connection string (SRS §19 Required).",

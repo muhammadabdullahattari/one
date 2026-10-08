@@ -1,11 +1,13 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import structlog
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
-from fastapi.responses import RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from redis.asyncio import Redis
 
 from src.api.dependencies import set_redis_client
@@ -90,12 +92,6 @@ def create_app() -> FastAPI:
     app.add_middleware(CorrelationIdMiddleware)
     register_exception_handlers(app)
 
-    @app.get("/", include_in_schema=False)
-    @app.get("/docs", include_in_schema=False)
-    @app.get("/redoc", include_in_schema=False)
-    async def redirect_to_frontend() -> RedirectResponse:
-        return RedirectResponse(url="http://localhost:3000", status_code=307)
-
     api_prefix = "/api/v1"
     app.include_router(health_router, prefix=api_prefix)
     app.include_router(auth_router, prefix=api_prefix)
@@ -108,6 +104,50 @@ def create_app() -> FastAPI:
     app.include_router(analytics_router, prefix=api_prefix)
     app.include_router(ws_router, prefix=api_prefix)
     app.include_router(ws_router)
+
+    ui_assets_dir = Path(__file__).resolve().parent.parent / "ui_assets"
+    if (ui_assets_dir / "_next" / "static").exists():
+        app.mount(
+            "/_next/static",
+            StaticFiles(directory=str(ui_assets_dir / "_next" / "static")),
+            name="next_static",
+        )
+
+    ui_route_map = {
+        "/": "dashboard.html",
+        "/dashboard": "dashboard.html",
+        "/tasks": "tasks.html",
+        "/workers": "workers.html",
+        "/queues": "queues.html",
+        "/schedules": "schedules.html",
+        "/dlq": "dlq.html",
+        "/metrics": "metrics.html",
+        "/live": "live.html",
+        "/login": "login.html",
+    }
+
+    @app.get("/docs", include_in_schema=False)
+    @app.get("/redoc", include_in_schema=False)
+    async def redirect_docs_to_dashboard() -> RedirectResponse:
+        return RedirectResponse(url="/dashboard", status_code=307)
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_ui(full_path: str, request: Request) -> Response:
+        if full_path.startswith("api/") or full_path.startswith("ws"):
+            raise HTTPException(status_code=404, detail="Not Found")
+        normalized = f"/{full_path}".rstrip("/") or "/"
+        if ui_assets_dir.exists():
+            if normalized in ui_route_map:
+                target_html = ui_assets_dir / ui_route_map[normalized]
+                if target_html.is_file():
+                    return FileResponse(target_html)
+            target_asset = ui_assets_dir / full_path
+            if target_asset.is_file():
+                return FileResponse(target_asset)
+            fallback = ui_assets_dir / "dashboard.html"
+            if fallback.is_file():
+                return FileResponse(fallback)
+        return RedirectResponse(url="http://localhost:3000", status_code=307)
 
     def custom_openapi():
         if app.openapi_schema:
