@@ -70,7 +70,10 @@ print(f"Task finished: {output}")
 
 ```bash
 npm install @abdullah_mog/task-engine
-# or
+```
+
+Alternative with pnpm:
+```bash
 pnpm add @abdullah_mog/task-engine
 ```
 
@@ -118,23 +121,38 @@ ws.connect();
 
 ### CLI Command Reference
 
+Start background worker process:
 ```bash
-# Start background worker process
 task-engine worker -A tasks --queues default,notifications --concurrency 10
+```
 
-# Start distributed cron scheduler daemon
+Start distributed cron scheduler daemon:
+```bash
 task-engine scheduler -A tasks
+```
 
-# Apply database migrations
+Apply database migrations:
+```bash
 task-engine migrate
+```
 
-# Start web dashboard and API server
-task-engine ui --port 8000
+Start API backend server:
+```bash
+task-engine api start --port 8000
+```
 
-# Submit ad-hoc tasks from terminal
-task-engine submit notifications.send_welcome_email -p '{"email":"user@test.com"}'
+Start Web Operations Console (Flower equivalent):
+```bash
+pnpm --prefix frontend dev
+```
 
-# Query task lifecycle and execution output
+Submit ad-hoc tasks from terminal:
+```bash
+task-engine submit notifications.send_welcome_email -p "{\"email\":\"user@test.com\"}"
+```
+
+Query task lifecycle and execution output:
+```bash
 task-engine status <task-id>
 ```
 
