@@ -1,6 +1,6 @@
 {
   "name": "@abdullah_mog/task-engine",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Official TypeScript & Node.js SDK for Event-Driven Distributed Task Processing Engine",
   "main": "dist/index.js",
   "module": "dist/index.mjs",

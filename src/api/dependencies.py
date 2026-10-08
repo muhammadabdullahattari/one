@@ -206,14 +206,15 @@ async def get_current_principal(
             is_authenticated=True,
         )
 
-    if settings.is_test:
+    if settings.is_development or settings.is_test:
         return Principal(
-            principal_id="test-operator",
+            principal_id="local-admin",
             role="admin",
             tenant_id=None,
             scopes=["*"],
             auth_mode=ApiAuthMode.JWT,
             is_authenticated=True,
+            username="admin",
         )
 
     raise HTTPException(

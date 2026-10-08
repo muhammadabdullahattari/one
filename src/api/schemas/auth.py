@@ -32,14 +32,15 @@ class UserCreateRequest(BaseModel):
     )
     tenant_id: str | None = Field(
         default=None,
-        max_length=64,
-        description=(
-            "Assigned tenant or project identifier. "
-            "If omitted, a unique tenant is auto-created from your username. "
-            "Pass 'default' to join the shared system tenant."
-        ),
-        examples=[None, "default", "project-alpha"],
+        description="System-provisioned tenant identifier. Cannot be specified by users.",
     )
+
+    @field_validator("tenant_id")
+    @classmethod
+    def validate_tenant_not_user_set(cls, v: str | None) -> str | None:
+        if v is not None:
+            raise ValueError("Tenant ID is managed by the system and cannot be specified by the user.")
+        return None
 
     @field_validator("password")
     @classmethod

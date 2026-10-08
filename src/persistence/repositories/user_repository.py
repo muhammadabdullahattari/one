@@ -1,3 +1,4 @@
+import os
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
@@ -54,17 +55,19 @@ class UserRepository(BaseRepository[UserModel]):
     async def seed_default_users(self) -> None:
         admin = await self.get_by_username("admin")
         if not admin:
+            admin_pwd = os.getenv("TASK_ENGINE_ADMIN_PASSWORD", "adminpassword123")
             await self.create_user(
                 username="admin",
                 email="admin@taskengine.internal",
-                password_hash=hash_password("adminpassword123"),
+                password_hash=hash_password(admin_pwd),
                 role="admin",
             )
         operator = await self.get_by_username("operator")
         if not operator:
+            operator_pwd = os.getenv("TASK_ENGINE_OPERATOR_PASSWORD", "operatorpass123")
             await self.create_user(
                 username="operator",
                 email="operator@taskengine.internal",
-                password_hash=hash_password("operatorpass123"),
+                password_hash=hash_password(operator_pwd),
                 role="operator",
             )

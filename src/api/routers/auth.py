@@ -60,7 +60,7 @@ async def register_user(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Email '{request.email}' is already registered.",
         )
-    effective_tenant = request.tenant_id if request.tenant_id else request.username.lower()
+    effective_tenant = request.username.lower()
     user = await user_repo.create_user(
         username=request.username,
         email=request.email,

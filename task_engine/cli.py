@@ -208,8 +208,7 @@ def ui_cmd(
 ) -> None:
     settings = get_settings()
     typer.echo(f"Starting Task Engine API on http://{host}:{port}")
-    typer.echo(f"  Interactive OpenAPI / Swagger Docs: http://localhost:{port}/docs")
-    typer.echo("  Web Operations Console (Flower equivalent): http://localhost:3000")
+    typer.echo("  Web Operations Console: http://localhost:3000")
     uvicorn.run(
         "src.api.main:app",
         host=host,

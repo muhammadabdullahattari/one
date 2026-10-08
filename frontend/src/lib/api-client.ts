@@ -57,7 +57,12 @@ async function request<T>(
           isRefreshing = false;
           onRefreshed(false);
           if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
-            window.location.href = "/login";
+            const isLocal =
+              window.location.hostname === "localhost" ||
+              window.location.hostname === "127.0.0.1";
+            if (!isLocal) {
+              window.location.href = "/login";
+            }
           }
           throw new ApiError(401, "UNAUTHORIZED", "Session expired. Please log in again.");
         }

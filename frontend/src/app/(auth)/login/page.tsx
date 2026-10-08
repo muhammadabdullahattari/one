@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   Card,
@@ -13,7 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { apiClient } from "@/lib/api-client";
-import { Lock, Mail, AlertCircle, ArrowRight, UserPlus, CheckCircle2, Shield } from "lucide-react";
+import { Lock, Mail, AlertCircle, ArrowRight, UserPlus, CheckCircle2 } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -23,10 +23,21 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [role, setRole] = useState<"operator" | "viewer">("operator");
-  const [tenantId, setTenantId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const isLocal =
+        window.location.hostname === "localhost" ||
+        window.location.hostname === "127.0.0.1" ||
+        process.env.NODE_ENV === "development";
+      if (isLocal && process.env.NODE_ENV !== "test") {
+        router.replace("/dashboard");
+      }
+    }
+  }, [router]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,36 +52,6 @@ export default function LoginPage() {
       router.push("/dashboard");
     } catch (err: any) {
       setError(err.message || "Invalid credentials. Please verify username and password.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleQuickLogin = async () => {
-    setError(null);
-    setLoading(true);
-
-    try {
-      try {
-        await apiClient.post("/auth/login", {
-          username: "admin",
-          password: "adminpassword123",
-        });
-      } catch {
-        await apiClient.post("/auth/register", {
-          username: "admin",
-          email: "admin@local.test",
-          password: "adminpassword123",
-          role: "operator",
-        });
-        await apiClient.post("/auth/login", {
-          username: "admin",
-          password: "adminpassword123",
-        });
-      }
-      router.push("/dashboard");
-    } catch (err: any) {
-      setError(err.message || "Failed to authenticate.");
     } finally {
       setLoading(false);
     }
@@ -99,7 +80,6 @@ export default function LoginPage() {
         email: email.trim(),
         password,
         role,
-        tenant_id: tenantId.trim() || undefined,
       });
 
       setSuccess("Account registered successfully! Logging you in...");
@@ -139,10 +119,10 @@ export default function LoginPage() {
                 setError(null);
                 setSuccess(null);
               }}
-              className={`py-2 px-3 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+              className={`text-xs font-semibold py-1.5 rounded-lg border transition-colors cursor-pointer ${
                 mode === "login"
-                  ? "border-2 border-foreground bg-foreground text-background shadow-sm ring-2 ring-foreground/20"
-                  : "border border-border bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground"
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-muted text-muted-foreground border-border hover:bg-muted/80"
               }`}
             >
               Log In
@@ -154,10 +134,10 @@ export default function LoginPage() {
                 setError(null);
                 setSuccess(null);
               }}
-              className={`py-2 px-3 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+              className={`text-xs font-semibold py-1.5 rounded-lg border transition-colors cursor-pointer ${
                 mode === "register"
-                  ? "border-2 border-foreground bg-foreground text-background shadow-sm ring-2 ring-foreground/20"
-                  : "border border-border bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground"
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-muted text-muted-foreground border-border hover:bg-muted/80"
               }`}
             >
               Create Account
@@ -174,13 +154,7 @@ export default function LoginPage() {
                   <span>{error}</span>
                 </div>
               )}
-              {success && (
-                <div className="p-3 text-xs bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded-lg flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 shrink-0" />
-                  <span>{success}</span>
-                </div>
-              )}
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Username or Email
                 </label>
@@ -196,7 +170,7 @@ export default function LoginPage() {
                   />
                 </div>
               </div>
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Password
                 </label>
@@ -221,15 +195,6 @@ export default function LoginPage() {
               >
                 {loading ? "Authenticating..." : "Sign In"}
                 {!loading && <ArrowRight className="w-4 h-4" />}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full text-xs text-muted-foreground hover:text-foreground cursor-pointer"
-                onClick={handleQuickLogin}
-                disabled={loading}
-              >
-                ⚡ One-Click Local Access (No Password)
               </Button>
             </CardFooter>
           </form>
@@ -302,31 +267,18 @@ export default function LoginPage() {
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-2.5">
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Account Role
-                  </label>
-                  <select
-                    value={role}
-                    onChange={(e) => setRole(e.target.value as "operator" | "viewer")}
-                    className="w-full text-xs h-9 rounded-md border border-input bg-background px-3"
-                  >
-                    <option value="operator">Operator (Submit, Replay)</option>
-                    <option value="viewer">Viewer (Read-only)</option>
-                  </select>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Tenant ID (Optional)
-                  </label>
-                  <Input
-                    type="text"
-                    placeholder="default or org-id"
-                    value={tenantId}
-                    onChange={(e) => setTenantId(e.target.value)}
-                  />
-                </div>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Account Role
+                </label>
+                <select
+                  value={role}
+                  onChange={(e) => setRole(e.target.value as "operator" | "viewer")}
+                  className="w-full text-xs h-9 rounded-md border border-input bg-background px-3"
+                >
+                  <option value="operator">Operator (Submit, Replay)</option>
+                  <option value="viewer">Viewer (Read-only)</option>
+                </select>
               </div>
             </CardContent>
             <CardFooter className="pt-2">

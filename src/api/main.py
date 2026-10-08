@@ -5,6 +5,7 @@ import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
+from fastapi.responses import RedirectResponse
 from redis.asyncio import Redis
 
 from src.api.dependencies import set_redis_client
@@ -67,8 +68,8 @@ def create_app() -> FastAPI:
         title="Task Engine API",
         description="Event-Driven Distributed Task Processing Engine v5.0 API Surface",
         version=settings.app_version,
-        docs_url="/docs",
-        redoc_url="/redoc",
+        docs_url=None,
+        redoc_url=None,
         openapi_url="/openapi.json",
         lifespan=lifespan,
     )
@@ -88,6 +89,12 @@ def create_app() -> FastAPI:
     app.add_middleware(RequestLoggingMiddleware)
     app.add_middleware(CorrelationIdMiddleware)
     register_exception_handlers(app)
+
+    @app.get("/", include_in_schema=False)
+    @app.get("/docs", include_in_schema=False)
+    @app.get("/redoc", include_in_schema=False)
+    async def redirect_to_frontend() -> RedirectResponse:
+        return RedirectResponse(url="http://localhost:3000", status_code=307)
     api_prefix = "/api/v1"
     app.include_router(health_router, prefix=api_prefix)
     app.include_router(auth_router, prefix=api_prefix)
