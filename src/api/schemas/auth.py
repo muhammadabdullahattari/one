@@ -39,7 +39,9 @@ class UserCreateRequest(BaseModel):
     @classmethod
     def validate_tenant_not_user_set(cls, v: str | None) -> str | None:
         if v is not None:
-            raise ValueError("Tenant ID is managed by the system and cannot be specified by the user.")
+            raise ValueError(
+                "Tenant ID is managed by the system and cannot be specified by the user."
+            )
         return None
 
     @field_validator("password")

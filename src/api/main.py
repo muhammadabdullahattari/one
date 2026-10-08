@@ -95,6 +95,7 @@ def create_app() -> FastAPI:
     @app.get("/redoc", include_in_schema=False)
     async def redirect_to_frontend() -> RedirectResponse:
         return RedirectResponse(url="http://localhost:3000", status_code=307)
+
     api_prefix = "/api/v1"
     app.include_router(health_router, prefix=api_prefix)
     app.include_router(auth_router, prefix=api_prefix)
