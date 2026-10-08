@@ -46,6 +46,36 @@ export default function LoginPage() {
     }
   };
 
+  const handleQuickLogin = async () => {
+    setError(null);
+    setLoading(true);
+
+    try {
+      try {
+        await apiClient.post("/auth/login", {
+          username: "admin",
+          password: "adminpassword123",
+        });
+      } catch {
+        await apiClient.post("/auth/register", {
+          username: "admin",
+          email: "admin@local.test",
+          password: "adminpassword123",
+          role: "operator",
+        });
+        await apiClient.post("/auth/login", {
+          username: "admin",
+          password: "adminpassword123",
+        });
+      }
+      router.push("/dashboard");
+    } catch (err: any) {
+      setError(err.message || "Failed to authenticate.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -183,14 +213,23 @@ export default function LoginPage() {
                 </div>
               </div>
             </CardContent>
-            <CardFooter className="pt-2">
+            <CardFooter className="pt-2 flex flex-col gap-2">
               <Button
                 type="submit"
-                className="w-full flex items-center justify-center gap-2"
+                className="w-full flex items-center justify-center gap-2 cursor-pointer"
                 disabled={loading}
               >
                 {loading ? "Authenticating..." : "Sign In"}
                 {!loading && <ArrowRight className="w-4 h-4" />}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+                onClick={handleQuickLogin}
+                disabled={loading}
+              >
+                ⚡ One-Click Local Access (No Password)
               </Button>
             </CardFooter>
           </form>
