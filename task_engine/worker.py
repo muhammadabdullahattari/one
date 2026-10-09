@@ -67,7 +67,7 @@ class TaskEngineWorker:
         runtime = self.get_runtime()
         try:
             loop.run_until_complete(runtime.start())
-        except KeyboardInterrupt, SystemExit:
+        except (KeyboardInterrupt, SystemExit):
             loop.run_until_complete(runtime.drain())
         finally:
             loop.close()

@@ -83,7 +83,7 @@ def _run_worker(
 
     try:
         loop.run_until_complete(runtime.start())
-    except KeyboardInterrupt, SystemExit:
+    except (KeyboardInterrupt, SystemExit):
         typer.echo("Gracefully shutting down worker...")
         loop.run_until_complete(runtime.drain())
     finally:
@@ -166,7 +166,7 @@ def _run_scheduler(app_module: str | None, leader_lock_key: int) -> None:
     typer.echo(f"Starting Task Engine scheduler daemon (lock key: {leader_lock_key})...")
     try:
         loop.run_until_complete(daemon.run())
-    except KeyboardInterrupt, SystemExit:
+    except (KeyboardInterrupt, SystemExit):
         typer.echo("Stopping scheduler daemon...")
         loop.run_until_complete(daemon.stop())
     finally:

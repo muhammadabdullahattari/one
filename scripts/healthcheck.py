@@ -34,7 +34,7 @@ def check_process(name: str) -> int:
                     cmdline = f.read().decode("utf-8", errors="ignore")
                     if name in cmdline:
                         return 0
-            except FileNotFoundError, PermissionError, ProcessLookupError:
+            except (FileNotFoundError, PermissionError, ProcessLookupError):
                 continue
         sys.stderr.write(f"Process matching '{name}' not found in /proc\n")
         return 1
